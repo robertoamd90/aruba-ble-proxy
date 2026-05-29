@@ -255,19 +255,6 @@ def create_aruba_bleak_client(runtime: Any, source: str):
                 if inspect.isawaitable(result):
                     self._schedule_notify_callback(result)
 
-            if _is_local_fallback_characteristic(characteristic):
-                self._register_runtime_notify_callback(
-                    service_uuid,
-                    characteristic_uuid,
-                    _notification_callback,
-                )
-                self._notify_callbacks[characteristic_uuid] = (
-                    service_uuid,
-                    _notification_callback,
-                )
-                self._local_notify_callbacks.add(characteristic_uuid)
-                return
-
             response = await self._runtime.async_start_gatt_notify(
                 ap_mac=self._source,
                 device_mac=self.address,
@@ -276,7 +263,25 @@ def create_aruba_bleak_client(runtime: Any, source: str):
                 callback=_notification_callback,
                 timeout=int(kwargs.get("timeout", 20)),
             )
-            _raise_for_failed_action(response, BleakError)
+            try:
+                _raise_for_failed_action(response, BleakError)
+            except BleakError:
+                if (
+                    _is_local_fallback_characteristic(characteristic)
+                    and _response_status(response) == "characteristicNotFound"
+                ):
+                    self._register_runtime_notify_callback(
+                        service_uuid,
+                        characteristic_uuid,
+                        _notification_callback,
+                    )
+                    self._notify_callbacks[characteristic_uuid] = (
+                        service_uuid,
+                        _notification_callback,
+                    )
+                    self._local_notify_callbacks.add(characteristic_uuid)
+                    return
+                raise
             if not self.is_connected:
                 self._forget_runtime_notify_callback(
                     service_uuid,
@@ -789,6 +794,15 @@ def _raise_for_failed_action(
         "Aruba BLE action failed: "
         + _status_detail(status, result.get("status_string"))
     )
+
+
+def _response_status(response: dict[str, Any]) -> str | None:
+    result = response.get("result")
+    if isinstance(result, dict):
+        status = result.get("status")
+        return str(status) if status is not None else None
+    status = response.get("status")
+    return str(status) if status is not None else None
 
 
 def _status_detail(status: Any, status_string: Any = None) -> str:

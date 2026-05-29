@@ -2027,6 +2027,17 @@ def test_aruba_bleak_client_supports_switchbot_command_flow(monkeypatch):
 
         async def async_start_gatt_notify(self, **kwargs):
             self.starts.append(kwargs)
+            self.registered.append(kwargs)
+            return {
+                "sent": True,
+                "result": {
+                    "received": True,
+                    "status": "success",
+                },
+            }
+
+        async def async_stop_gatt_notify(self, **kwargs):
+            self.forgotten.append(kwargs)
             return {
                 "sent": True,
                 "result": {
@@ -2070,7 +2081,8 @@ def test_aruba_bleak_client_supports_switchbot_command_flow(monkeypatch):
         await client.write_gatt_char(write_char, bytes.fromhex("570f4e0101000000"))
         runtime.registered[-1]["callback"](SimpleNamespace(value=b"\x01"))
 
-        assert runtime.starts == []
+        assert runtime.starts[-1]["service_uuid"] == read_char.service_uuid
+        assert runtime.starts[-1]["characteristic_uuid"] == SWITCHBOT_READ_CHAR_UUID
         assert runtime.registered[-1]["service_uuid"] == read_char.service_uuid
         assert runtime.registered[-1]["characteristic_uuid"] == SWITCHBOT_READ_CHAR_UUID
         assert runtime.writes[-1]["service_uuid"] == write_char.service_uuid
@@ -2081,6 +2093,64 @@ def test_aruba_bleak_client_supports_switchbot_command_flow(monkeypatch):
 
         await client.stop_notify(read_char)
         assert runtime.forgotten[-1]["characteristic_uuid"] == SWITCHBOT_READ_CHAR_UUID
+
+    asyncio.run(run_test())
+
+
+def test_aruba_bleak_client_switchbot_notify_falls_back_if_aruba_rejects_characteristic(
+    monkeypatch,
+):
+    _install_fake_bleak_services(monkeypatch)
+
+    class Runtime:
+        def __init__(self):
+            self.active = True
+            self.starts = []
+            self.registered = []
+
+        def is_device_active(self, source, address):
+            return self.active
+
+        async def async_send_aruba_action(self, *, ap_mac, request, wait_result=True):
+            return {
+                "sent": True,
+                "result": {
+                    "received": True,
+                    "status": "success",
+                },
+            }
+
+        async def async_wait_for_device_characteristics(self, address):
+            return []
+
+        def service_uuids_for_device(self, address):
+            return {"fd3d"}
+
+        async def async_start_gatt_notify(self, **kwargs):
+            self.starts.append(kwargs)
+            return {
+                "sent": True,
+                "result": {
+                    "received": True,
+                    "status": "characteristicNotFound",
+                },
+            }
+
+        def register_gatt_notify_callback(self, **kwargs):
+            self.registered.append(kwargs)
+            return True
+
+    async def run_test():
+        runtime = Runtime()
+        client_cls = create_aruba_bleak_client(runtime, "02:00:00:00:00:01")
+        client = client_cls("02:00:00:00:01:01")
+
+        await client.connect()
+        read_char = client.services.get_characteristic(SWITCHBOT_READ_CHAR_UUID)
+        await client.start_notify(read_char, lambda *_: None)
+
+        assert runtime.starts[-1]["characteristic_uuid"] == SWITCHBOT_READ_CHAR_UUID
+        assert runtime.registered[-1]["characteristic_uuid"] == SWITCHBOT_READ_CHAR_UUID
 
     asyncio.run(run_test())
 
@@ -2109,6 +2179,15 @@ def test_aruba_bleak_client_ignores_empty_notification_values(monkeypatch):
 
         def service_uuids_for_device(self, address):
             return {"fd3d"}
+
+        async def async_start_gatt_notify(self, **kwargs):
+            return {
+                "sent": True,
+                "result": {
+                    "received": True,
+                    "status": "characteristicNotFound",
+                },
+            }
 
         def register_gatt_notify_callback(self, **kwargs):
             self.registered.append(kwargs)
