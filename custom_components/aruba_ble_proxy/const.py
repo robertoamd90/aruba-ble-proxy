@@ -13,6 +13,12 @@ CONF_RADIO_PROFILE = "radio_profile"
 CONF_ENABLE_RADIO_PROFILE = "enable_radio_profile"
 CONF_ENABLE_ACTIVE_BLE = "enable_active_ble"
 CONF_SETUP_COMPLETE = "setup_complete"
+CONF_ENTRY_TYPE = "entry_type"
+CONF_PARENT_ENTRY_ID = "parent_entry_id"
+CONF_AP_SOURCE = "ap_source"
+
+ENTRY_TYPE_LISTENER = "listener"
+ENTRY_TYPE_AP_SOURCE = "ap_source"
 
 DEFAULT_LISTEN_HOST = "0.0.0.0"
 DEFAULT_LISTEN_PORT = 7443

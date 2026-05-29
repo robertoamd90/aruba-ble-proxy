@@ -56,6 +56,8 @@ def test_remote_scanner_forwards_payload_to_legacy_internal_method(monkeypatch):
 
         def __init__(self, **kwargs):
             self.connectable = kwargs["connectable"]
+            self.scanner_id = kwargs["scanner_id"]
+            self.name = kwargs["name"]
             self.details = _Details()
 
         def async_setup(self):
@@ -69,6 +71,11 @@ def test_remote_scanner_forwards_payload_to_legacy_internal_method(monkeypatch):
     scanner = ArubaBleRemoteScanner("02:00:00:00:00:01")
     scanner.async_on_payload(_payload())
 
+    assert scanner.scanner.scanner_id == "02:00:00:00:00:01"
+    assert scanner.scanner.name == "Aruba AP 02:00:00:00:00:01"
+    assert scanner.scanner.source == "02:00:00:00:00:01"
+    assert scanner.scanner.adapter == "02:00:00:00:00:01"
+    assert scanner.scanner.details.name == "Aruba AP 02:00:00:00:00:01"
     assert LegacyScanner.calls == [
         (
             "02:00:00:00:01:01",
@@ -91,6 +98,7 @@ def test_remote_scanner_supports_internal_method_without_raw_payload(monkeypatch
 
         def __init__(self, **kwargs):
             self.connectable = kwargs["connectable"]
+            self.name = kwargs["name"]
             self.details = _Details()
 
         def async_setup(self):
@@ -148,6 +156,7 @@ def test_remote_scanner_forwards_payload_to_current_habluetooth_method(monkeypat
 
         def __init__(self, **kwargs):
             self.connectable = kwargs["connectable"]
+            self.name = kwargs["name"]
             self.details = _Details()
 
         def async_setup(self):
@@ -179,9 +188,10 @@ def test_remote_scanner_forwards_payload_to_current_habluetooth_method(monkeypat
 def test_remote_scanner_connectable_connector_tracks_one_active_slot(monkeypatch):
     class CurrentScanner:
         def __init__(self, **kwargs):
-            self.adapter = kwargs["adapter"]
+            self.adapter = kwargs.get("adapter", kwargs["scanner_id"])
             self.connector = kwargs["connector"]
             self.connectable = kwargs["connectable"]
+            self.name = kwargs["name"]
             self.details = _Details()
             self._connect_in_progress = {}
 
@@ -212,6 +222,7 @@ def test_remote_scanner_connectable_connector_tracks_one_active_slot(monkeypatch
     )
 
     assert scanner.connectable is True
+    assert scanner.scanner.name == "Aruba AP 02:00:00:00:00:01"
     assert scanner.scanner.connector.can_connect() is True
     allocations = scanner.scanner.get_allocations()
     assert allocations.slots == 1
@@ -229,3 +240,39 @@ def test_remote_scanner_connectable_connector_tracks_one_active_slot(monkeypatch
     allocations = scanner.scanner.get_allocations()
     assert allocations.free == 0
     assert allocations.allocated == ["02:00:00:00:01:02"]
+
+
+def test_remote_scanner_falls_back_to_legacy_constructor(monkeypatch):
+    class LegacyConstructorScanner:
+        def __init__(
+            self,
+            *,
+            source,
+            adapter,
+            connector,
+            connectable,
+            requested_mode,
+            current_mode,
+        ):
+            self.source = source
+            self.adapter = adapter
+            self.connector = connector
+            self.connectable = connectable
+            self.requested_mode = requested_mode
+            self.current_mode = current_mode
+            self.details = _Details()
+
+        def async_setup(self):
+            return lambda: None
+
+        def _async_on_advertisement(self, *args):
+            pass
+
+    _install_fake_bluetooth(monkeypatch, LegacyConstructorScanner)
+
+    scanner = ArubaBleRemoteScanner("02:00:00:00:00:01")
+
+    assert scanner.scanner.source == "02:00:00:00:00:01"
+    assert scanner.scanner.adapter == "02:00:00:00:00:01"
+    assert scanner.scanner.name == "Aruba AP 02:00:00:00:00:01"
+    assert scanner.scanner.details.name == "Aruba AP 02:00:00:00:00:01"

@@ -15,6 +15,7 @@ from .aruba_cli import (
 
 from .const import (
     CONF_ACCESS_TOKEN,
+    CONF_ENTRY_TYPE,
     CONF_ENABLE_ACTIVE_BLE,
     CONF_ENABLE_RADIO_PROFILE,
     CONF_ENDPOINT_PATH,
@@ -25,6 +26,7 @@ from .const import (
     CONF_RADIO_PROFILE,
     CONF_TRANSPORT_PREFIX,
     DOMAIN,
+    ENTRY_TYPE_AP_SOURCE,
     SERVICE_BLE_CONNECT,
     SERVICE_BLE_DISCONNECT,
     SERVICE_GENERATE_CLI,
@@ -40,6 +42,9 @@ PLATFORMS = ["sensor"]
 
 
 async def async_setup_entry(hass, entry) -> bool:
+    if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_AP_SOURCE:
+        return True
+
     from .runtime import ArubaBleProxyRuntime
 
     runtime = ArubaBleProxyRuntime(
@@ -57,6 +62,9 @@ async def async_setup_entry(hass, entry) -> bool:
 
 
 async def async_unload_entry(hass, entry) -> bool:
+    if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_AP_SOURCE:
+        return True
+
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     runtime: ArubaBleProxyRuntime | None = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     if runtime is not None:

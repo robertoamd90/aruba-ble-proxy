@@ -21,7 +21,13 @@ from .active import (
     encode_action_message,
 )
 from .aruba_proto import ArubaTelemetryMessage
-from .const import DOMAIN
+from .const import (
+    CONF_AP_SOURCE,
+    CONF_ENTRY_TYPE,
+    CONF_PARENT_ENTRY_ID,
+    DOMAIN,
+    ENTRY_TYPE_AP_SOURCE,
+)
 from .ha_payload import BluetoothPayload, event_to_bluetooth_payload
 from .models import ArubaActionResult, ArubaBleEvent, ArubaCharacteristic, ArubaStatusUpdate
 from .server import ArubaBleReceiver
@@ -221,6 +227,7 @@ class ArubaBleProxyRuntime:
         self._listeners: list[Callable[[], None]] = []
         self._bluetooth_callback: Callable[[Any], None] | None = None
         self._entry_id: str | None = None
+        self._source_entry_ids: dict[str, str] = {}
         self._register_scanner: Callable[..., Callable[[], None]] | None = None
         self._scanner_unsubs: dict[str, list[Callable[[], None]]] = {}
         self._remote_scanners: dict[str, Any] = {}
@@ -356,7 +363,7 @@ class ArubaBleProxyRuntime:
     async def _async_handle_event(self, event: ArubaBleEvent) -> None:
         self._update_stats(event)
         payload = event_to_bluetooth_payload(event)
-        if not self._async_forward_to_remote_scanner(payload):
+        if not await self._async_forward_to_remote_scanner(payload):
             self._async_forward_to_bluetooth(payload)
         self._notify_listeners()
 
@@ -1583,7 +1590,7 @@ class ArubaBleProxyRuntime:
         for listener in list(self._listeners):
             listener()
 
-    def _async_forward_to_remote_scanner(self, payload: BluetoothPayload) -> bool:
+    async def _async_forward_to_remote_scanner(self, payload: BluetoothPayload) -> bool:
         if self._register_scanner is None:
             return False
 
@@ -1591,7 +1598,7 @@ class ArubaBleProxyRuntime:
         try:
             scanner = self._remote_scanners.get(source)
             if scanner is None:
-                scanner = self._create_remote_scanner(source)
+                scanner = await self._async_create_remote_scanner(source)
             scanner.async_on_payload(payload)
         except Exception as err:
             self.stats.bluetooth_forward_errors += 1
@@ -1603,7 +1610,55 @@ class ArubaBleProxyRuntime:
             self.stats.last_bluetooth_error = None
             return True
 
-    def _create_remote_scanner(self, source: str) -> Any:
+    async def _async_create_remote_scanner(self, source: str) -> Any:
+        return self._create_remote_scanner(
+            source,
+            source_config_entry_id=await self._async_source_config_entry_id(source),
+        )
+
+    async def _async_source_config_entry_id(self, source: str) -> str | None:
+        if self.hass is None or self._entry_id is None:
+            return self._entry_id
+
+        current = self._source_entry_ids.get(source)
+        if current is not None and _config_entry_exists(self.hass, current):
+            return current
+
+        if entry := _find_ap_source_entry(self.hass, self._entry_id, source):
+            self._source_entry_ids[source] = entry.entry_id
+            return entry.entry_id
+
+        flow = getattr(getattr(self.hass.config_entries, "flow", None), "async_init", None)
+        if flow is None:
+            return self._entry_id
+
+        try:
+            from homeassistant import config_entries
+
+            discovery_source = config_entries.SOURCE_INTEGRATION_DISCOVERY
+        except Exception:
+            discovery_source = "integration_discovery"
+
+        await flow(
+            DOMAIN,
+            context={"source": discovery_source},
+            data={
+                CONF_ENTRY_TYPE: ENTRY_TYPE_AP_SOURCE,
+                CONF_AP_SOURCE: source,
+                CONF_PARENT_ENTRY_ID: self._entry_id,
+            },
+        )
+        if entry := _find_ap_source_entry(self.hass, self._entry_id, source):
+            self._source_entry_ids[source] = entry.entry_id
+            return entry.entry_id
+        return self._entry_id
+
+    def _create_remote_scanner(
+        self,
+        source: str,
+        *,
+        source_config_entry_id: str | None = None,
+    ) -> Any:
         from .scanner import ArubaBleRemoteScanner
 
         if self._register_scanner is None:
@@ -1620,7 +1675,7 @@ class ArubaBleProxyRuntime:
                 remote_scanner.scanner,
                 connection_slots=1 if remote_scanner.connectable else 0,
                 source_domain=DOMAIN,
-                source_config_entry_id=self._entry_id,
+                source_config_entry_id=source_config_entry_id,
             ),
             remote_scanner.async_setup(),
         ]
@@ -1741,6 +1796,32 @@ def _device_key(source: str, device_mac: str) -> tuple[str, str]:
 
 def _source_operation_key(source: str) -> tuple[str, str]:
     return (_normalize_mac(source) or source.upper(), "*")
+
+
+def _config_entry_exists(hass: Any, entry_id: str) -> bool:
+    getter = getattr(hass.config_entries, "async_get_entry", None)
+    if getter is None:
+        return False
+    return getter(entry_id) is not None
+
+
+def _find_ap_source_entry(hass: Any, parent_entry_id: str, source: str) -> Any | None:
+    entries_getter = getattr(hass.config_entries, "async_entries", None)
+    if entries_getter is None:
+        return None
+    normalized = _normalize_mac(source) or source.upper()
+    for entry in entries_getter(DOMAIN):
+        data = getattr(entry, "data", {})
+        if data.get(CONF_ENTRY_TYPE) != ENTRY_TYPE_AP_SOURCE:
+            continue
+        if data.get(CONF_PARENT_ENTRY_ID) != parent_entry_id:
+            continue
+        entry_source = _normalize_mac(data.get(CONF_AP_SOURCE)) or str(
+            data.get(CONF_AP_SOURCE, "")
+        ).upper()
+        if entry_source == normalized:
+            return entry
+    return None
 
 
 def _normalize_mac(value: str | None) -> str | None:

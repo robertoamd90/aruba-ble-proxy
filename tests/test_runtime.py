@@ -18,6 +18,13 @@ from custom_components.aruba_ble_proxy.models import (
     MacAddrType,
     Reporter,
 )
+from custom_components.aruba_ble_proxy.const import (
+    CONF_AP_SOURCE,
+    CONF_ENTRY_TYPE,
+    CONF_PARENT_ENTRY_ID,
+    DOMAIN,
+    ENTRY_TYPE_AP_SOURCE,
+)
 from custom_components.aruba_ble_proxy.runtime import ArubaBleProxyRuntime
 
 
@@ -123,6 +130,74 @@ def test_runtime_unknown_device_is_not_active():
 
     assert runtime.is_device_active("02:00:00:00:00:01", "02:00:00:00:01:01") is False
     assert runtime.active_devices_for_source("02:00:00:00:00:01") == []
+
+
+def test_runtime_creates_distinct_ap_source_entries_for_remote_scanners():
+    async def run_test():
+        class Entry:
+            def __init__(self, entry_id, data):
+                self.entry_id = entry_id
+                self.data = data
+
+        class Flow:
+            def __init__(self, entries):
+                self.entries = entries
+                self.calls = []
+
+            async def async_init(self, domain, *, context, data):
+                self.calls.append((domain, context, data))
+                entry = Entry(f"ap-entry-{len(self.entries) + 1}", dict(data))
+                self.entries.append(entry)
+                return {"type": "create_entry", "result": entry}
+
+        class ConfigEntries:
+            def __init__(self):
+                self.entries = []
+                self.flow = Flow(self.entries)
+
+            def async_entries(self, domain):
+                assert domain == DOMAIN
+                return list(self.entries)
+
+            def async_get_entry(self, entry_id):
+                return next(
+                    (entry for entry in self.entries if entry.entry_id == entry_id),
+                    None,
+                )
+
+        class Hass:
+            def __init__(self):
+                self.config_entries = ConfigEntries()
+
+        hass = Hass()
+        runtime = ArubaBleProxyRuntime(
+            hass=hass,
+            host="0.0.0.0",
+            port=7443,
+            access_token="secret",
+        )
+        runtime._entry_id = "listener-entry"
+
+        first = await runtime._async_source_config_entry_id("02:00:00:00:00:01")
+        second = await runtime._async_source_config_entry_id("02:00:00:00:00:02")
+        first_again = await runtime._async_source_config_entry_id("02:00:00:00:00:01")
+
+        assert first == "ap-entry-1"
+        assert second == "ap-entry-2"
+        assert first_again == "ap-entry-1"
+        assert len(hass.config_entries.flow.calls) == 2
+        assert hass.config_entries.entries[0].data == {
+            CONF_ENTRY_TYPE: ENTRY_TYPE_AP_SOURCE,
+            CONF_AP_SOURCE: "02:00:00:00:00:01",
+            CONF_PARENT_ENTRY_ID: "listener-entry",
+        }
+        assert hass.config_entries.entries[1].data == {
+            CONF_ENTRY_TYPE: ENTRY_TYPE_AP_SOURCE,
+            CONF_AP_SOURCE: "02:00:00:00:00:02",
+            CONF_PARENT_ENTRY_ID: "listener-entry",
+        }
+
+    asyncio.run(run_test())
 
 
 def test_runtime_falls_back_when_remote_scanner_registration_fails(monkeypatch):

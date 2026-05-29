@@ -19,11 +19,14 @@ from homeassistant.core import callback
 
 from .const import (
     CONF_ACCESS_TOKEN,
+    CONF_AP_SOURCE,
     CONF_ENABLE_RADIO_PROFILE,
     CONF_ENABLE_ACTIVE_BLE,
     CONF_ENDPOINT_PATH,
+    CONF_ENTRY_TYPE,
     CONF_LISTEN_HOST,
     CONF_LISTEN_PORT,
+    CONF_PARENT_ENTRY_ID,
     CONF_PUBLIC_HOST,
     CONF_PUBLIC_SCHEME,
     CONF_RADIO_PROFILE,
@@ -37,6 +40,8 @@ from .const import (
     DEFAULT_RADIO_PROFILE,
     DEFAULT_TRANSPORT_PREFIX,
     DOMAIN,
+    ENTRY_TYPE_AP_SOURCE,
+    ENTRY_TYPE_LISTENER,
 )
 
 
@@ -111,6 +116,7 @@ def _data_with_defaults(data: dict[str, Any]) -> dict[str, Any]:
         CONF_ENABLE_RADIO_PROFILE: True,
         CONF_ENABLE_ACTIVE_BLE: DEFAULT_ENABLE_ACTIVE_BLE,
         CONF_RADIO_PROFILE: DEFAULT_RADIO_PROFILE,
+        CONF_ENTRY_TYPE: ENTRY_TYPE_LISTENER,
         CONF_SETUP_COMPLETE: False,
     }
     merged.update(data)
@@ -124,12 +130,31 @@ class ArubaBleProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._data: dict[str, Any] = {}
 
+    async def async_step_integration_discovery(self, discovery_info: dict[str, Any]):
+        if discovery_info.get(CONF_ENTRY_TYPE) != ENTRY_TYPE_AP_SOURCE:
+            return self.async_abort(reason="unknown_discovery")
+
+        source = str(discovery_info[CONF_AP_SOURCE])
+        parent_entry_id = str(discovery_info[CONF_PARENT_ENTRY_ID])
+        data = {
+            CONF_ENTRY_TYPE: ENTRY_TYPE_AP_SOURCE,
+            CONF_AP_SOURCE: source,
+            CONF_PARENT_ENTRY_ID: parent_entry_id,
+        }
+        await self.async_set_unique_id(f"{ENTRY_TYPE_AP_SOURCE}:{parent_entry_id}:{source}")
+        self._abort_if_unique_id_configured(updates=data)
+        return self.async_create_entry(
+            title=f"Aruba AP {source}",
+            data=data,
+        )
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:
             data = _data_with_defaults(dict(user_input))
             data[CONF_LISTEN_HOST] = DEFAULT_LISTEN_HOST
             data[CONF_PUBLIC_SCHEME] = DEFAULT_PUBLIC_SCHEME
             data[CONF_ACCESS_TOKEN] = data[CONF_ACCESS_TOKEN].strip() or secrets.token_urlsafe(32)
+            data[CONF_ENTRY_TYPE] = ENTRY_TYPE_LISTENER
             data[CONF_SETUP_COMPLETE] = True
             self._data = data
             await self.async_set_unique_id(f"{data[CONF_LISTEN_HOST]}:{data[CONF_LISTEN_PORT]}")
@@ -174,6 +199,8 @@ class ArubaBleProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
+        if config_entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_AP_SOURCE:
+            return ArubaBleProxyApSourceOptionsFlow()
         return ArubaBleProxyOptionsFlow()
 
 
@@ -189,6 +216,7 @@ class ArubaBleProxyOptionsFlow(config_entries.OptionsFlow):
             data[CONF_PUBLIC_SCHEME] = DEFAULT_PUBLIC_SCHEME
             data[CONF_ENDPOINT_PATH] = _clean_path(str(data[CONF_ENDPOINT_PATH]))
             data[CONF_ACCESS_TOKEN] = str(data[CONF_ACCESS_TOKEN]).strip() or secrets.token_urlsafe(32)
+            data[CONF_ENTRY_TYPE] = ENTRY_TYPE_LISTENER
             data[CONF_SETUP_COMPLETE] = True
             self._data = data
             return await self.async_step_cli()
@@ -227,3 +255,8 @@ class ArubaBleProxyOptionsFlow(config_entries.OptionsFlow):
                 "cleanup_cli_config": _generate_cleanup_cli(self._data),
             },
         )
+
+
+class ArubaBleProxyApSourceOptionsFlow(config_entries.OptionsFlow):
+    async def async_step_init(self, user_input: dict[str, Any] | None = None):
+        return self.async_abort(reason="ap_source_options_not_supported")

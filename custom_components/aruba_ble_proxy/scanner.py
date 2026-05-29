@@ -59,16 +59,17 @@ class ArubaBleRemoteScanner:
                     slots=1 if connector is not None else 0,
                 )
 
-        self._scanner = _Scanner(
-            source=source,
-            adapter=source,
-            connector=connector,
-            connectable=connector is not None,
-            requested_mode=BluetoothScanningMode.PASSIVE,
-            current_mode=BluetoothScanningMode.PASSIVE,
-        )
         scanner_name = f"Aruba AP {source}"
+        self._scanner = _build_remote_scanner(
+            _Scanner,
+            source=source,
+            name=scanner_name,
+            connector=connector,
+            mode=BluetoothScanningMode.PASSIVE,
+        )
         self._scanner.name = scanner_name
+        self._scanner.source = source
+        self._scanner.adapter = source
         self._scanner.details = replace(self._scanner.details, name=scanner_name)
         scanner_ref = self._scanner
 
@@ -109,6 +110,36 @@ def _ha_bluetooth_connector(*, client: type, source: str, can_connect):
             from habluetooth.models import HaBluetoothConnector
 
     return HaBluetoothConnector(client=client, source=source, can_connect=can_connect)
+
+
+def _build_remote_scanner(
+    scanner_cls: type,
+    *,
+    source: str,
+    name: str,
+    connector: Any,
+    mode: Any,
+):
+    common = {
+        "connector": connector,
+        "connectable": connector is not None,
+        "requested_mode": mode,
+        "current_mode": mode,
+    }
+    try:
+        return scanner_cls(
+            scanner_id=source,
+            name=name,
+            **common,
+        )
+    except TypeError as err:
+        if "scanner_id" not in str(err) and "name" not in str(err):
+            raise
+        return scanner_cls(
+            source=source,
+            adapter=source,
+            **common,
+        )
 
 
 def _connections_in_progress(scanner: Any | None) -> int:
