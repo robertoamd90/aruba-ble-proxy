@@ -1,0 +1,29 @@
+# Initial Home Assistant oriented BLE service UUID seed.
+# One 16-bit service UUID per line. Comments are ignored by the generator.
+#
+# This is intentionally a practical seed, not an exhaustive HA Bluetooth matcher export.
+
+FCD2  # BTHome
+FE95  # Xiaomi / MiBeacon
+FD3D  # SwitchBot
+FD50  # Shelly BLU
+FEE5  # Mopeka / vendor-specific BLE integrations
+181C
+181E
+181B
+181D
+1801
+0D00
+FDCD
+FCE0
+FE24
+FFF0
+EC88
+8451
+8351
+8551
+8151
+8251
+AF30
+ABCD
+4677

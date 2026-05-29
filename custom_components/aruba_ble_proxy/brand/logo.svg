@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 256" role="img" aria-label="Aruba BLE Proxy">
+  <rect width="512" height="256" rx="40" fill="#0f2530"/>
+  <g transform="translate(36 0)">
+    <circle cx="128" cy="132" r="34" fill="#16a6d9"/>
+    <path d="M72 176c13-20 32-34 56-34s43 14 56 34" fill="none" stroke="#7be3d0" stroke-width="15" stroke-linecap="round"/>
+    <path d="M50 142c19-31 46-50 78-50s59 19 78 50" fill="none" stroke="#24b9f2" stroke-width="15" stroke-linecap="round"/>
+    <path d="M128 42v172l56-48-56-48 56-48-56-48" fill="none" stroke="#f6fbff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M128 118l-49 48M128 118 79 70" fill="none" stroke="#f6fbff" stroke-width="15" stroke-linecap="round"/>
+  </g>
+  <text x="240" y="114" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="42" font-weight="760" fill="#f6fbff">Aruba BLE</text>
+  <text x="240" y="160" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="34" font-weight="650" fill="#7be3d0">Proxy</text>
+</svg>

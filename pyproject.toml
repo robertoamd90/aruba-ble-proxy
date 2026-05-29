@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aruba-ble-proxy"
+version = "0.3.0b2"
+description = "Aruba BLE scanner and experimental active GATT proxy for Home Assistant"
+requires-python = ">=3.11"
+license = "GPL-3.0-only"
+dependencies = [
+  "protobuf>=4.24,<7",
+  "websockets>=11",
+]
+
+[project.optional-dependencies]
+dev = [
+  "bleak>=0.22",
+  "bleak-retry-connector>=4",
+  "grpcio-tools>=1.80",
+  "pytest>=8",
+]
+
+[project.scripts]
+aruba-ble-proxy-receiver = "custom_components.aruba_ble_proxy.cli:main"
+aruba-ble-proxy-generate-aruba-cli = "custom_components.aruba_ble_proxy.aruba_cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["custom_components*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"custom_components.aruba_ble_proxy" = ["brand/*", "data/*.txt", "proto_generated/*.md"]

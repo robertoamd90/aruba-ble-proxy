@@ -1,0 +1,77 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Aruba BLE Proxy",
+        "description": "Configure the WebSocket endpoint that Aruba APs will call.",
+        "data": {
+          "listen_port": "Listen port",
+          "public_host": "Home Assistant host/IP reachable by Aruba APs",
+          "endpoint_path": "Endpoint path",
+          "access_token": "Access token (optional, generated if empty)",
+          "transport_prefix": "Aruba transport profile prefix",
+          "enable_radio_profile": "Generate Aruba IoT radio profile",
+          "enable_active_ble": "Enable experimental active BLE/GATT connector",
+          "radio_profile": "Aruba IoT radio profile name"
+        }
+      },
+      "init": {
+        "title": "Configure Aruba BLE Proxy",
+        "description": "Change the configuration. If you clear the token field, a new token will be generated.",
+        "data": {
+          "listen_port": "Listen port",
+          "public_host": "Home Assistant host/IP reachable by Aruba APs",
+          "endpoint_path": "Endpoint path",
+          "access_token": "Access token (clear to regenerate)",
+          "transport_prefix": "Aruba transport profile prefix",
+          "enable_radio_profile": "Generate Aruba IoT radio profile",
+          "enable_active_ble": "Enable experimental active BLE/GATT connector",
+          "radio_profile": "Aruba IoT radio profile name"
+        }
+      },
+      "cli": {
+        "title": "Copy Aruba CLI configuration",
+        "description": "Endpoint: `{endpoint_url}`\n\nThis will create {profile_count} BLE Data transport profiles for {filter_count} service UUID filters. Copy this block into the Aruba Instant CLI, commit it, then submit this step.\n\nAfter applying the Aruba config, the `BLE advertisements` entity should start increasing when the AP forwards BLE frames.\n\n```text\n{cli_config}\n```\n\nTo remove the generated Aruba profiles later, use:\n\n```text\n{cleanup_cli_config}\n```"
+      }
+    },
+    "abort": {
+      "already_configured": "This Aruba BLE Proxy listener is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure Aruba BLE Proxy",
+        "description": "Change the configuration. If you clear the token field, a new token will be generated.",
+        "data": {
+          "listen_port": "Listen port",
+          "public_host": "Home Assistant host/IP reachable by Aruba APs",
+          "endpoint_path": "Endpoint path",
+          "access_token": "Access token (clear to regenerate)",
+          "transport_prefix": "Aruba transport profile prefix",
+          "enable_radio_profile": "Generate Aruba IoT radio profile",
+          "enable_active_ble": "Enable experimental active BLE/GATT connector",
+          "radio_profile": "Aruba IoT radio profile name"
+        }
+      },
+      "cli": {
+        "title": "Aruba CLI configuration",
+        "description": "Endpoint: `{endpoint_url}`\n\nThis will create {profile_count} BLE Data transport profiles for {filter_count} service UUID filters. Copy this block into the Aruba Instant CLI and commit it.\n\n```text\n{cli_config}\n```\n\nCleanup:\n\n```text\n{cleanup_cli_config}\n```"
+      }
+    }
+  },
+  "services": {
+    "generate_cli": {
+      "name": "Generate Aruba CLI configuration",
+      "description": "Generate a complete Aruba Instant CLI configuration block for this BLE proxy endpoint."
+    },
+    "generate_cleanup_cli": {
+      "name": "Generate Aruba cleanup CLI configuration",
+      "description": "Generate an Aruba Instant CLI block that removes the profiles created by this integration."
+    },
+    "gatt_notify": {
+      "name": "Configure Aruba GATT notifications",
+      "description": "Enable or disable GATT notifications through an Aruba AP for active BLE testing."
+    }
+  }
+}

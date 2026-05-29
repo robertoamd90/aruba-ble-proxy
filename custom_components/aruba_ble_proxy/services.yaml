@@ -1,0 +1,212 @@
+generate_cli:
+  fields:
+    public_host:
+      required: true
+      selector:
+        text:
+    listen_port:
+      default: 7443
+      selector:
+        number:
+          min: 1
+          max: 65535
+          mode: box
+    endpoint_path:
+      default: /aruba-ble-proxy
+      selector:
+        text:
+    access_token:
+      required: true
+      selector:
+        text:
+    transport_prefix:
+      default: ha-ble
+      selector:
+        text:
+    enable_radio_profile:
+      default: true
+      selector:
+        boolean:
+    radio_profile:
+      default: ha-ble-radio
+      selector:
+        text:
+generate_cleanup_cli:
+  fields:
+    public_host:
+      required: true
+      selector:
+        text:
+    listen_port:
+      default: 7443
+      selector:
+        number:
+          min: 1
+          max: 65535
+          mode: box
+    endpoint_path:
+      default: /aruba-ble-proxy
+      selector:
+        text:
+    access_token:
+      required: true
+      selector:
+        text:
+    transport_prefix:
+      default: ha-ble
+      selector:
+        text:
+    enable_radio_profile:
+      default: true
+      selector:
+        boolean:
+    radio_profile:
+      default: ha-ble-radio
+      selector:
+        text:
+ble_connect:
+  fields:
+    ap_mac:
+      required: true
+      selector:
+        text:
+    device_mac:
+      required: true
+      selector:
+        text:
+    timeout:
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 300
+          mode: box
+    wait_result:
+      default: true
+      selector:
+        boolean:
+ble_disconnect:
+  fields:
+    ap_mac:
+      required: true
+      selector:
+        text:
+    device_mac:
+      required: true
+      selector:
+        text:
+    timeout:
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 300
+          mode: box
+    wait_result:
+      default: true
+      selector:
+        boolean:
+gatt_read:
+  fields:
+    ap_mac:
+      required: true
+      selector:
+        text:
+    device_mac:
+      required: true
+      selector:
+        text:
+    service_uuid:
+      required: true
+      selector:
+        text:
+    characteristic_uuid:
+      required: true
+      selector:
+        text:
+    timeout:
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 300
+          mode: box
+    wait_result:
+      default: true
+      selector:
+        boolean:
+gatt_write:
+  fields:
+    ap_mac:
+      required: true
+      selector:
+        text:
+    device_mac:
+      required: true
+      selector:
+        text:
+    service_uuid:
+      required: true
+      selector:
+        text:
+    characteristic_uuid:
+      required: true
+      selector:
+        text:
+    value:
+      description: Hex bytes to write. Separators such as spaces, colons, and dashes are accepted.
+      required: true
+      selector:
+        text:
+    with_response:
+      default: true
+      selector:
+        boolean:
+    timeout:
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 300
+          mode: box
+    wait_result:
+      default: true
+      selector:
+        boolean:
+gatt_notify:
+  fields:
+    ap_mac:
+      required: true
+      selector:
+        text:
+    device_mac:
+      required: true
+      selector:
+        text:
+    service_uuid:
+      required: true
+      selector:
+        text:
+    characteristic_uuid:
+      required: true
+      selector:
+        text:
+    enable:
+      default: true
+      selector:
+        boolean:
+    indicate:
+      default: false
+      selector:
+        boolean:
+    timeout:
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 300
+          mode: box
+    wait_result:
+      default: true
+      selector:
+        boolean:

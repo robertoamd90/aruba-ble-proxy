@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.DS_Store
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+.venv*/
+venv/
+build/
+dist/
+
+# Generated Aruba protobuf modules.
+/aruba_iot_*_pb2.py
+/aruba_iot_*_pb2.pyi
+vendor/aos8-iot-server-example-websocket/
+
+# Local troubleshooting screenshots.
+img/
