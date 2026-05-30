@@ -212,6 +212,9 @@ def test_remote_scanner_connectable_connector_tracks_one_active_slot(monkeypatch
         def active_devices_for_source(self, source):
             return list(self.active_devices)
 
+        def connection_slots_for_source(self, source):
+            return 1
+
     _install_fake_bluetooth(monkeypatch, CurrentScanner)
     runtime = Runtime()
 
@@ -240,6 +243,49 @@ def test_remote_scanner_connectable_connector_tracks_one_active_slot(monkeypatch
     allocations = scanner.scanner.get_allocations()
     assert allocations.free == 0
     assert allocations.allocated == ["02:00:00:00:01:02"]
+
+
+def test_remote_scanner_connectable_connector_allows_configured_slots(monkeypatch):
+    class CurrentScanner:
+        def __init__(self, **kwargs):
+            self.adapter = kwargs.get("adapter", kwargs["scanner_id"])
+            self.connector = kwargs["connector"]
+            self.connectable = kwargs["connectable"]
+            self.details = _Details()
+            self._connect_in_progress = {}
+
+        def async_setup(self):
+            return lambda: None
+
+        def _async_on_advertisement(self, *args):
+            pass
+
+    class Runtime:
+        def can_connect_source(self, source):
+            return True
+
+        def active_devices_for_source(self, source):
+            return ["02:00:00:00:01:01"]
+
+        def connection_slots_for_source(self, source):
+            return 2
+
+    _install_fake_bluetooth(monkeypatch, CurrentScanner)
+
+    scanner = ArubaBleRemoteScanner(
+        "02:00:00:00:00:01",
+        runtime=Runtime(),
+        connectable=True,
+    )
+
+    assert scanner.scanner.connector.can_connect() is True
+    allocations = scanner.scanner.get_allocations()
+    assert allocations.slots == 2
+    assert allocations.free == 1
+    assert allocations.allocated == ["02:00:00:00:01:01"]
+
+    scanner.scanner._connect_in_progress["02:00:00:00:01:02"] = 1
+    assert scanner.scanner.connector.can_connect() is False
 
 
 def test_remote_scanner_falls_back_to_legacy_constructor(monkeypatch):

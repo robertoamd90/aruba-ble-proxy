@@ -12,6 +12,7 @@
           "transport_prefix": "Prefisso transport profile Aruba",
           "enable_radio_profile": "Genera IoT radio profile Aruba",
           "enable_active_ble": "Abilita connector BLE/GATT attivo sperimentale",
+          "active_connection_slots": "Slot connessione BLE attiva sperimentali per AP",
           "radio_profile": "Nome IoT radio profile Aruba"
         }
       },
@@ -26,12 +27,13 @@
           "transport_prefix": "Prefisso transport profile Aruba",
           "enable_radio_profile": "Genera IoT radio profile Aruba",
           "enable_active_ble": "Abilita connector BLE/GATT attivo sperimentale",
+          "active_connection_slots": "Slot connessione BLE attiva sperimentali per AP",
           "radio_profile": "Nome IoT radio profile Aruba"
         }
       },
       "cli": {
         "title": "Copia configurazione CLI Aruba",
-        "description": "Endpoint: `{endpoint_url}`\n\nQuesto blocco crea {profile_count} BLE Data transport profile per {filter_count} service UUID filter. Copialo nella CLI Aruba Instant, fai commit, poi conferma questo step.\n\nDopo aver applicato la configurazione Aruba, l'entità `BLE advertisements` dovrebbe iniziare ad aumentare quando l'AP inoltra frame BLE.\n\n```text\n{cli_config}\n```\n\nPer rimuovere in seguito i profili Aruba generati, usa:\n\n```text\n{cleanup_cli_config}\n```"
+        "description": "Endpoint: `{endpoint_url}`\n\nQuesto blocco crea {profile_count} BLE Data transport profile per {filter_count} service UUID filter. Copialo nella CLI Aruba Instant, fai commit, poi conferma questo step.\n\nDopo aver applicato la configurazione Aruba, gli AP Aruba dovrebbero comparire come sorgenti Bluetooth e gli advertisement BLE dovrebbero comparire nella sezione Bluetooth di Home Assistant.\n\n```text\n{cli_config}\n```\n\nPer rimuovere in seguito i profili Aruba generati, usa:\n\n```text\n{cleanup_cli_config}\n```"
       }
     },
     "abort": {
@@ -51,6 +53,7 @@
           "transport_prefix": "Prefisso transport profile Aruba",
           "enable_radio_profile": "Genera IoT radio profile Aruba",
           "enable_active_ble": "Abilita connector BLE/GATT attivo sperimentale",
+          "active_connection_slots": "Slot connessione BLE attiva sperimentali per AP",
           "radio_profile": "Nome IoT radio profile Aruba"
         }
       },

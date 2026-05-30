@@ -206,27 +206,9 @@ supported feature.
 ## Field Test Procedure
 
 Use these services from Home Assistant Developer Tools after the AP is connected
-and `receiver_connected_sources` contains the AP MAC.
-
-For troubleshooting, temporarily enable these disabled-by-default diagnostic
-entities:
-
-- `Active BLE last action`
-- `Active BLE last action error`
-- `Active BLE actions sent`
-- `Active BLE action send errors`
-- `Active BLE action failures`
-- `Active BLE action timeouts`
-- `Active BLE operations in flight`
-- `Active BLE operations waiting`
-- `Active BLE pending characteristic reads`
-- `Active BLE pending device discoveries`
-- `Active BLE notification subscriptions`
-- `Active BLE characteristic waits`
-- `Active BLE characteristic wait timeouts`
-- `Active BLE notifications enabled`
-- `Active BLE notification updates`
-- `Active BLE notification callback errors`
+and visible as a Bluetooth source. Troubleshooting should use service responses,
+Home Assistant logs, and the Bluetooth advertisements page rather than
+recorder-backed diagnostic sensors.
 
 First prove connection:
 

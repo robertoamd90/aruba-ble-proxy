@@ -47,6 +47,8 @@ DISCONNECT_SUCCESS_STATUSES = {
     *DISCONNECTED_DEVICE_STATUSES,
 }
 
+PASSIVE_SENSOR_UPDATE_INTERVAL = 30.0
+
 
 @dataclass
 class RuntimeStats:
@@ -208,12 +210,14 @@ class ArubaBleProxyRuntime:
         port: int,
         access_token: str,
         enable_active_ble: bool = True,
+        active_connection_slots: int = 1,
     ) -> None:
         self.hass = hass
         self.host = host
         self.port = port
         self.access_token = access_token
         self.enable_active_ble = enable_active_ble
+        self.active_connection_slots = max(1, int(active_connection_slots))
         self.stats = RuntimeStats()
         self._receiver = ArubaBleReceiver(
             host=host,
@@ -255,6 +259,7 @@ class ArubaBleProxyRuntime:
             tuple[str, str, str, str],
             list[Callable[[ArubaCharacteristic], None]],
         ] = {}
+        self._last_passive_listener_update = 0.0
 
     async def async_start(self, entry: Any | None = None) -> None:
         from homeassistant.components import bluetooth
@@ -365,7 +370,7 @@ class ArubaBleProxyRuntime:
         payload = event_to_bluetooth_payload(event)
         if not await self._async_forward_to_remote_scanner(payload):
             self._async_forward_to_bluetooth(payload)
-        self._notify_listeners()
+        self._notify_passive_listeners()
 
     async def _async_handle_message(self, message: ArubaTelemetryMessage) -> None:
         for characteristic in message.characteristics:
@@ -804,12 +809,16 @@ class ArubaBleProxyRuntime:
         source = _normalize_mac(ap_mac) or ap_mac.upper()
         device_mac = _normalize_mac(request.device_mac) or request.device_mac.upper()
         active_devices = self.active_devices_for_source(source)
-        if not active_devices:
+        pending_devices = self.pending_connect_devices_for_source(source)
+        slot_devices = sorted({*active_devices, *pending_devices})
+        if not slot_devices:
             return None
 
         if device_mac in active_devices:
             status = "alreadyConnected"
             status_string = "Device is already connected through this Aruba AP"
+        elif len(slot_devices) < self.active_connection_slots:
+            return None
         else:
             status = "noMoreConnectionSlots"
             status_string = (
@@ -1224,7 +1233,18 @@ class ArubaBleProxyRuntime:
             for connected_source in self._receiver.connected_sources()
         }:
             return False
-        return len(self.active_devices_for_source(normalized)) == 0
+        return (
+            len(
+                {
+                    *self.active_devices_for_source(normalized),
+                    *self.pending_connect_devices_for_source(normalized),
+                }
+            )
+            < self.active_connection_slots
+        )
+
+    def connection_slots_for_source(self, source: str) -> int:
+        return self.active_connection_slots
 
     def active_devices_for_source(self, source: str) -> list[str]:
         normalized = _normalize_mac(source) or source.upper()
@@ -1234,6 +1254,17 @@ class ArubaBleProxyRuntime:
                 normalized, set()
             )
             if source_mac == normalized and self.is_device_active(source_mac, device_mac)
+        )
+
+    def pending_connect_devices_for_source(self, source: str) -> list[str]:
+        normalized = _normalize_mac(source) or source.upper()
+        return sorted(
+            {
+                context.device_mac
+                for context in self._pending_action_contexts.values()
+                if context.ap_mac == normalized
+                and context.action_type == ACTION_BLE_CONNECT
+            }
         )
 
     def characteristics_for_device(
@@ -1490,6 +1521,7 @@ class ArubaBleProxyRuntime:
                 "listen_host": self.host,
                 "listen_port": self.port,
                 "active_ble_enabled": self.enable_active_ble,
+                "active_connection_slots_per_ap": self.active_connection_slots,
                 "registered_scanners": len(self._remote_scanners),
                 "registered_scanner_sources": sorted(self._remote_scanners),
                 "receiver_connected_sources": self._receiver.connected_sources(),
@@ -1590,6 +1622,13 @@ class ArubaBleProxyRuntime:
         for listener in list(self._listeners):
             listener()
 
+    def _notify_passive_listeners(self) -> None:
+        now = monotonic()
+        if now - self._last_passive_listener_update < PASSIVE_SENSOR_UPDATE_INTERVAL:
+            return
+        self._last_passive_listener_update = now
+        self._notify_listeners()
+
     async def _async_forward_to_remote_scanner(self, payload: BluetoothPayload) -> bool:
         if self._register_scanner is None:
             return False
@@ -1673,7 +1712,9 @@ class ArubaBleProxyRuntime:
             self._register_scanner(
                 self.hass,
                 remote_scanner.scanner,
-                connection_slots=1 if remote_scanner.connectable else 0,
+                connection_slots=(
+                    self.active_connection_slots if remote_scanner.connectable else 0
+                ),
                 source_domain=DOMAIN,
                 source_config_entry_id=source_config_entry_id,
             ),

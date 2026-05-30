@@ -1,6 +1,6 @@
 # Field Test Report Template
 
-Use this template for candidate `0.3.0b3`.
+Use this template for candidate `0.3.0b4`.
 
 ## Environment
 
@@ -19,9 +19,6 @@ Other Bluetooth radios disabled: yes/no
 ## Passive BLE
 
 ```text
-Receiver connected sources:
-Receiver last peer:
-BLE advertisements counter increased: yes/no
 Bluetooth advertisements page shows Aruba source: yes/no
 BTHome updates through Aruba only: yes/no/not tested
 SwitchBot thermometer updates through Aruba only: yes/no/not tested
@@ -59,12 +56,6 @@ gatt_read full response:
 ble_disconnect status:
 ble_disconnect full response:
 
-Active BLE operations in flight after disconnect:
-Active BLE operations waiting after disconnect:
-Active BLE pending characteristic reads after disconnect:
-Active BLE pending device discoveries after disconnect:
-Active BLE notification subscriptions after disconnect:
-
 Manual GATT result: pass/fail/not tested
 Notes:
 ```
@@ -80,19 +71,6 @@ Command tested:
 Command result:
 Home Assistant error text:
 
-Active BLE last action:
-Active BLE last action duration:
-Active BLE slowest action duration:
-Active BLE last action error:
-Active BLE action failures:
-Active BLE action timeouts:
-Active BLE last characteristic wait duration:
-Active BLE slowest characteristic wait duration:
-Active BLE notification updates:
-Active BLE notification callback errors:
-
-Counters stuck after failure: yes/no
-Passive sensors still updated during test: yes/no
 SwitchBot result: pass/fail/not tested
 Notes:
 ```

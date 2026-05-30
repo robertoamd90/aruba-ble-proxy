@@ -1,4 +1,5 @@
 import importlib
+import asyncio
 import sys
 import types
 
@@ -38,6 +39,7 @@ config_flow = importlib.import_module("custom_components.aruba_ble_proxy.config_
 
 from custom_components.aruba_ble_proxy.const import (  # noqa: E402
     CONF_ACCESS_TOKEN,
+    CONF_ACTIVE_CONNECTION_SLOTS,
     CONF_ENABLE_ACTIVE_BLE,
     CONF_ENDPOINT_PATH,
     CONF_LISTEN_PORT,
@@ -50,6 +52,13 @@ def test_data_defaults_enable_active_ble_for_current_experimental_build():
     data = config_flow._data_with_defaults({})
 
     assert data[CONF_ENABLE_ACTIVE_BLE] is True
+    assert data[CONF_ACTIVE_CONNECTION_SLOTS] == 1
+
+
+def test_data_defaults_clamp_active_connection_slots():
+    data = config_flow._data_with_defaults({CONF_ACTIVE_CONNECTION_SLOTS: 0})
+
+    assert data[CONF_ACTIVE_CONNECTION_SLOTS] == 1
 
 
 def test_data_defaults_preserve_disabled_active_ble():
@@ -99,3 +108,27 @@ def test_data_defaults_preserve_existing_token():
 
     assert data[CONF_ACCESS_TOKEN] == "secret"
     assert data[CONF_PUBLIC_SCHEME] == "ws"
+
+
+def test_cli_placeholders_use_executor_when_available(monkeypatch):
+    calls = []
+
+    class Hass:
+        async def async_add_executor_job(self, func, *args):
+            calls.append((func, args))
+            return func(*args)
+
+    monkeypatch.setattr(config_flow, "_cli_profile_count", lambda: 3)
+    monkeypatch.setattr(config_flow, "_cli_filter_count", lambda: 21)
+    monkeypatch.setattr(config_flow, "_generate_cli", lambda data: "configure terminal")
+    monkeypatch.setattr(config_flow, "_generate_cleanup_cli", lambda data: "cleanup")
+
+    data = config_flow._data_with_defaults({CONF_PUBLIC_HOST: "ha.local"})
+    placeholders = asyncio.run(config_flow._async_build_cli_placeholders(Hass(), data))
+
+    assert calls
+    assert calls[0][0] is config_flow._build_cli_placeholders
+    assert placeholders["profile_count"] == "3"
+    assert placeholders["filter_count"] == "21"
+    assert placeholders["cli_config"] == "configure terminal"
+    assert placeholders["cleanup_cli_config"] == "cleanup"

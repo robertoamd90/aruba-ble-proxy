@@ -62,14 +62,8 @@ the generated radio profile in the correct order.
 
 After Aruba commits the config:
 
-- `BLE advertisements` should increase
-- `WebSocket connections` should be greater than zero if the diagnostic entity is enabled
-- `Last peer` should show the Aruba AP source address if the diagnostic entity is enabled
-- `Registered scanners` should show how many Aruba AP sources have been registered as passive
-  Home Assistant Bluetooth scanners if the diagnostic entity is enabled
-- `Bluetooth forwards` should increase if the diagnostic entity is enabled
-- `Bluetooth forward errors` should stay at zero if the diagnostic entity is enabled
-- the `BLE advertisements` attributes should show AP sources and BLE service data UUIDs
+- Aruba APs should appear as Bluetooth sources in Home Assistant.
+- Home Assistant's Bluetooth advertisements page should show Aruba APs as sources.
 - supported Home Assistant Bluetooth integrations should start seeing matching devices
 
 Validated so far:

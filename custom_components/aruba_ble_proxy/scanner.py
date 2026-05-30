@@ -29,9 +29,15 @@ class ArubaBleRemoteScanner:
                 from .active_client import create_aruba_bleak_client
 
                 def can_connect() -> bool:
+                    slots = _connection_slots(runtime, source)
+                    active_devices = (
+                        runtime.active_devices_for_source(source)
+                        if hasattr(runtime, "active_devices_for_source")
+                        else []
+                    )
                     return runtime.can_connect_source(
                         source
-                    ) and _connections_in_progress(scanner_ref) == 0
+                    ) and len(active_devices) + _connections_in_progress(scanner_ref) < slots
 
                 connector = _ha_bluetooth_connector(
                     client=create_aruba_bleak_client(runtime, source),
@@ -56,7 +62,11 @@ class ArubaBleRemoteScanner:
                         else []
                     ),
                     in_progress=getattr(self, "_connect_in_progress", {}),
-                    slots=1 if connector is not None else 0,
+                    slots=(
+                        _connection_slots(runtime, source)
+                        if connector is not None and runtime is not None
+                        else 0
+                    ),
                 )
 
         scanner_name = f"Aruba AP {source}"
@@ -149,6 +159,15 @@ def _connections_in_progress(scanner: Any | None) -> int:
     if get_count is not None:
         return int(get_count())
     return sum(getattr(scanner, "_connect_in_progress", {}).values())
+
+
+def _connection_slots(runtime: Any | None, source: str) -> int:
+    if runtime is None:
+        return 1
+    getter = getattr(runtime, "connection_slots_for_source", None)
+    if getter is None:
+        return 1
+    return max(1, int(getter(source)))
 
 
 def _call_advertisement_method(method: Any, payload: BluetoothPayload, *, include_raw: bool) -> None:

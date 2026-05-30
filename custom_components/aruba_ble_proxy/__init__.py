@@ -15,6 +15,7 @@ from .aruba_cli import (
 
 from .const import (
     CONF_ACCESS_TOKEN,
+    CONF_ACTIVE_CONNECTION_SLOTS,
     CONF_ENTRY_TYPE,
     CONF_ENABLE_ACTIVE_BLE,
     CONF_ENABLE_RADIO_PROFILE,
@@ -25,6 +26,7 @@ from .const import (
     CONF_PUBLIC_SCHEME,
     CONF_RADIO_PROFILE,
     CONF_TRANSPORT_PREFIX,
+    DEFAULT_ACTIVE_CONNECTION_SLOTS,
     DOMAIN,
     ENTRY_TYPE_AP_SOURCE,
     SERVICE_BLE_CONNECT,
@@ -38,7 +40,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["sensor"]
+PLATFORMS: list[str] = []
 
 
 async def async_setup_entry(hass, entry) -> bool:
@@ -53,10 +55,15 @@ async def async_setup_entry(hass, entry) -> bool:
         port=entry.data[CONF_LISTEN_PORT],
         access_token=entry.data[CONF_ACCESS_TOKEN],
         enable_active_ble=entry.data.get(CONF_ENABLE_ACTIVE_BLE, True),
+        active_connection_slots=entry.data.get(
+            CONF_ACTIVE_CONNECTION_SLOTS,
+            DEFAULT_ACTIVE_CONNECTION_SLOTS,
+        ),
     )
     await runtime.async_start(entry)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    if PLATFORMS:
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 
@@ -65,7 +72,9 @@ async def async_unload_entry(hass, entry) -> bool:
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_AP_SOURCE:
         return True
 
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = True
+    if PLATFORMS:
+        unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     runtime: ArubaBleProxyRuntime | None = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     if runtime is not None:
         await runtime.async_stop()
@@ -81,11 +90,11 @@ async def async_setup(hass, config: dict) -> bool:
 
     async def _async_generate_cli(call) -> dict[str, str]:
         data = _service_data_to_config(call.data)
-        return {"cli": _generate_cli(data), "endpoint_url": _endpoint_url(data)}
+        return await hass.async_add_executor_job(_generate_cli_response, data)
 
     async def _async_generate_cleanup_cli(call) -> dict[str, str]:
         data = _service_data_to_config(call.data)
-        return {"cli": _generate_cleanup_cli(data)}
+        return await hass.async_add_executor_job(_generate_cleanup_cli_response, data)
 
     async def _async_ble_connect(call) -> dict:
         runtime = _runtime_for_ap(hass, call.data["ap_mac"])
@@ -198,6 +207,14 @@ async def async_setup(hass, config: dict) -> bool:
         supports_response=SupportsResponse.ONLY,
     )
     return True
+
+
+def _generate_cli_response(data: dict) -> dict[str, str]:
+    return {"cli": _generate_cli(data), "endpoint_url": _endpoint_url(data)}
+
+
+def _generate_cleanup_cli_response(data: dict) -> dict[str, str]:
+    return {"cli": _generate_cleanup_cli(data)}
 
 
 def _cli_service_schema():

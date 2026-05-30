@@ -139,11 +139,10 @@ Implemented locally:
 - Aruba BLE advertisements converted to `BluetoothServiceInfoBleak`
 - Aruba APs registered as passive Home Assistant Bluetooth scanner sources when supported by HA
 - forwarding into Home Assistant Bluetooth via `async_get_advertisement_callback`
-- received advertisement count sensor
-- disabled-by-default diagnostic sensors for receiver, last advertisement, and Bluetooth forwarding state
+- no recorder-backed diagnostic sensors; validation is done through Home Assistant Bluetooth sources and logs
 - experimental connectable Home Assistant Bluetooth scanner support for active BLE/GATT
 - experimental Aruba BLE action path for connect, disconnect, GATT read/write, and notifications
-- active BLE is conservatively limited to one in-flight/connected device per AP
+- active BLE connection slots per AP are configurable
 - active GATT reads, characteristic discovery, and notifications are scoped by Aruba AP source
 - SwitchBot command service fallback when a device advertises SwitchBot service UUID `FD3D`
 - passive BLE validated with BTHome and SwitchBot thermometer advertisements

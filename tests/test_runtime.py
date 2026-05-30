@@ -25,6 +25,7 @@ from custom_components.aruba_ble_proxy.const import (
     DOMAIN,
     ENTRY_TYPE_AP_SOURCE,
 )
+from custom_components.aruba_ble_proxy import runtime as runtime_module
 from custom_components.aruba_ble_proxy.runtime import ArubaBleProxyRuntime
 
 
@@ -88,6 +89,33 @@ def test_runtime_tracks_last_advertisement_diagnostics():
     assert diagnostics["last_service_data"] == ["0000fcd2-0000-1000-8000-00805f9b34fb"]
     assert diagnostics["last_manufacturer_ids"] == [0x0959]
     assert diagnostics["last_seen"]
+
+
+def test_runtime_throttles_passive_listener_updates(monkeypatch):
+    monkeypatch.setattr(runtime_module, "PASSIVE_SENSOR_UPDATE_INTERVAL", 60.0)
+    runtime = ArubaBleProxyRuntime(
+        hass=None,
+        host="0.0.0.0",
+        port=7443,
+        access_token="secret",
+    )
+    notifications = 0
+
+    def listener():
+        nonlocal notifications
+        notifications += 1
+
+    runtime.async_add_listener(listener)
+
+    async def run_events():
+        await runtime._async_handle_event(_event())
+        await runtime._async_handle_event(_event())
+        await runtime._async_handle_event(_event())
+
+    asyncio.run(run_events())
+
+    assert runtime.stats.events == 3
+    assert notifications == 1
 
 
 def test_runtime_tracks_advertised_service_uuids_by_device():
@@ -485,6 +513,86 @@ def test_runtime_rejects_second_active_connect_on_same_ap_locally():
             "noMoreConnectionSlots: "
             "Another BLE device is already connected through this Aruba AP"
         )
+
+    asyncio.run(run_test())
+
+
+def test_runtime_allows_second_active_connect_when_slots_are_configured():
+    async def run_test():
+        class Receiver:
+            def __init__(self):
+                self.payloads = []
+                self.stats = type(
+                    "Stats",
+                    (),
+                    {
+                        "connections_opened": 0,
+                        "connections_closed": 0,
+                        "binary_messages": 0,
+                        "text_messages": 0,
+                        "invalid_tokens": 0,
+                        "decode_errors": 0,
+                        "last_peer": None,
+                    },
+                )()
+
+            async def async_send_to_source(self, source, payload):
+                self.payloads.append((source, payload))
+
+            def connected_sources(self):
+                return ["02:00:00:00:00:01"]
+
+        runtime = ArubaBleProxyRuntime(
+            hass=None,
+            host="0.0.0.0",
+            port=7443,
+            access_token="secret",
+            active_connection_slots=2,
+        )
+        receiver = Receiver()
+        runtime._receiver = receiver
+        key = ("02:00:00:00:00:01", "02:00:00:00:01:01")
+        runtime._active_device_keys_by_source[key[0]] = {key}
+
+        task = asyncio.create_task(
+            runtime.async_send_aruba_action(
+                ap_mac="02:00:00:00:00:01",
+                request=ArubaBleActionRequest(
+                    action_type=ACTION_BLE_CONNECT,
+                    action_id="connect-second-device",
+                    device_mac="02:00:00:00:01:02",
+                ),
+            )
+        )
+        await asyncio.sleep(0)
+
+        assert len(receiver.payloads) == 1
+        assert runtime.can_connect_source("02:00:00:00:00:01") is False
+
+        await runtime._async_handle_message(
+            ArubaTelemetryMessage(
+                reporter=_event().reporter,
+                events=[],
+                action_results=[
+                    ArubaActionResult(
+                        reporter=_event().reporter,
+                        action_id="connect-second-device",
+                        action_type=ACTION_BLE_CONNECT,
+                        device_mac="02:00:00:00:01:02",
+                        status=ArubaActionStatus.SUCCESS,
+                        status_name="success",
+                        status_string="ok",
+                        apb_mac=None,
+                    )
+                ],
+                characteristics=[],
+            )
+        )
+
+        response = await task
+        assert response["sent"] is True
+        assert response["result"]["status"] == "success"
+        assert runtime.diagnostic_attributes()["active_connection_slots_per_ap"] == 2
 
     asyncio.run(run_test())
 
@@ -1410,6 +1518,7 @@ def test_runtime_serializes_active_operations_per_ap_source():
             host="0.0.0.0",
             port=7443,
             access_token="secret",
+            active_connection_slots=2,
         )
         receiver = Receiver()
         runtime._receiver = receiver
@@ -1434,6 +1543,123 @@ def test_runtime_serializes_active_operations_per_ap_source():
                     action_type=ACTION_BLE_CONNECT,
                     action_id="connect-two",
                     device_mac="02:00:00:00:01:02",
+                ),
+            )
+        )
+        await asyncio.sleep(0)
+
+        assert len(receiver.payloads) == 1
+        diagnostics = runtime.diagnostic_attributes()
+        assert diagnostics["active_operation_locks"] == 1
+        assert diagnostics["active_operations_in_flight"] == 1
+        assert diagnostics["active_operations_waiting"] == 1
+        assert runtime.pending_connect_devices_for_source("02:00:00:00:00:01") == [
+            "02:00:00:00:01:01"
+        ]
+
+        await runtime._async_handle_message(
+            ArubaTelemetryMessage(
+                reporter=_event().reporter,
+                events=[],
+                action_results=[
+                    ArubaActionResult(
+                        reporter=_event().reporter,
+                        action_id="connect-one",
+                        action_type=ACTION_BLE_CONNECT,
+                        device_mac="02:00:00:00:01:01",
+                        status=ArubaActionStatus.SUCCESS,
+                        status_name="success",
+                        status_string="ok",
+                        apb_mac=None,
+                    ),
+                ],
+                characteristics=[],
+            )
+        )
+        assert (await first_task)["result"]["status"] == "success"
+
+        await asyncio.sleep(0)
+        assert len(receiver.payloads) == 2
+        await runtime._async_handle_message(
+            ArubaTelemetryMessage(
+                reporter=_event().reporter,
+                events=[],
+                action_results=[
+                    ArubaActionResult(
+                        reporter=_event().reporter,
+                        action_id="connect-two",
+                        action_type=ACTION_BLE_CONNECT,
+                        device_mac="02:00:00:00:01:02",
+                        status=ArubaActionStatus.SUCCESS,
+                        status_name="success",
+                        status_string="ok",
+                        apb_mac=None,
+                    ),
+                ],
+                characteristics=[],
+            )
+        )
+        assert (await second_task)["result"]["status"] == "success"
+        assert runtime.diagnostic_attributes()["active_operation_locks"] == 0
+
+    asyncio.run(run_test())
+
+
+def test_runtime_serializes_active_operations_for_same_device():
+    async def run_test():
+        class Receiver:
+            def __init__(self):
+                self.payloads = []
+                self.stats = type(
+                    "Stats",
+                    (),
+                    {
+                        "connections_opened": 0,
+                        "connections_closed": 0,
+                        "binary_messages": 0,
+                        "text_messages": 0,
+                        "invalid_tokens": 0,
+                        "decode_errors": 0,
+                        "last_peer": None,
+                    },
+                )()
+
+            async def async_send_to_source(self, source, payload):
+                self.payloads.append((source, payload))
+
+            def connected_sources(self):
+                return ["02:00:00:00:00:01"]
+
+        runtime = ArubaBleProxyRuntime(
+            hass=None,
+            host="0.0.0.0",
+            port=7443,
+            access_token="secret",
+            active_connection_slots=2,
+        )
+        receiver = Receiver()
+        runtime._receiver = receiver
+
+        first_task = asyncio.create_task(
+            runtime.async_send_aruba_action(
+                ap_mac="02:00:00:00:00:01",
+                request=ArubaBleActionRequest(
+                    action_type=ACTION_BLE_CONNECT,
+                    action_id="connect-one",
+                    device_mac="02:00:00:00:01:01",
+                ),
+            )
+        )
+        await asyncio.sleep(0)
+        assert len(receiver.payloads) == 1
+
+        second_task = asyncio.create_task(
+            runtime.async_send_aruba_action(
+                ap_mac="02:00:00:00:00:01",
+                request=ArubaBleActionRequest(
+                    action_type=ACTION_BLE_CONNECT,
+                    action_id="connect-two",
+                    device_mac="02:00:00:00:01:01",
                 ),
             )
         )
@@ -1470,8 +1696,81 @@ def test_runtime_serializes_active_operations_per_ap_source():
         assert len(receiver.payloads) == 1
         second_response = await second_task
         assert second_response["sent"] is False
-        assert second_response["status"] == "noMoreConnectionSlots"
+        assert second_response["status"] == "alreadyConnected"
         assert runtime.diagnostic_attributes()["active_operation_locks"] == 0
+
+    asyncio.run(run_test())
+
+
+def test_runtime_counts_pending_connects_against_connection_slots():
+    async def run_test():
+        class Receiver:
+            def __init__(self):
+                self.payloads = []
+                self.stats = type(
+                    "Stats",
+                    (),
+                    {
+                        "connections_opened": 0,
+                        "connections_closed": 0,
+                        "binary_messages": 0,
+                        "text_messages": 0,
+                        "invalid_tokens": 0,
+                        "decode_errors": 0,
+                        "last_peer": None,
+                    },
+                )()
+
+            async def async_send_to_source(self, source, payload):
+                self.payloads.append((source, payload))
+
+            def connected_sources(self):
+                return ["02:00:00:00:00:01"]
+
+        runtime = ArubaBleProxyRuntime(
+            hass=None,
+            host="0.0.0.0",
+            port=7443,
+            access_token="secret",
+            active_connection_slots=1,
+        )
+        receiver = Receiver()
+        runtime._receiver = receiver
+
+        first_task = asyncio.create_task(
+            runtime.async_send_aruba_action(
+                ap_mac="02:00:00:00:00:01",
+                request=ArubaBleActionRequest(
+                    action_type=ACTION_BLE_CONNECT,
+                    action_id="connect-one",
+                    device_mac="02:00:00:00:01:01",
+                ),
+            )
+        )
+        await asyncio.sleep(0)
+        assert len(receiver.payloads) == 1
+        assert runtime.can_connect_source("02:00:00:00:00:01") is False
+
+        await runtime._async_handle_message(
+            ArubaTelemetryMessage(
+                reporter=_event().reporter,
+                events=[],
+                action_results=[
+                    ArubaActionResult(
+                        reporter=_event().reporter,
+                        action_id="connect-one",
+                        action_type=ACTION_BLE_CONNECT,
+                        device_mac="02:00:00:00:01:01",
+                        status=ArubaActionStatus.SUCCESS,
+                        status_name="success",
+                        status_string="ok",
+                        apb_mac=None,
+                    )
+                ],
+                characteristics=[],
+            )
+        )
+        assert (await first_task)["result"]["status"] == "success"
 
     asyncio.run(run_test())
 

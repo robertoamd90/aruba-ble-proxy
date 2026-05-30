@@ -4,7 +4,7 @@ This file freezes the current development direction for field testing. It is not
 a stable 1.0 definition yet; it is the checklist used to decide whether active
 BLE can become stable.
 
-Current candidate version: `0.3.0b3`
+Current candidate version: `0.3.0b4`
 
 ## What Is Frozen For This Candidate
 
@@ -59,7 +59,6 @@ checklist for the current candidate.
 Pass criteria:
 
 - Aruba AP connects to the WebSocket receiver.
-- `BLE advertisements` increases.
 - Home Assistant's Bluetooth advertisements page shows Aruba AP MACs as sources.
 - BTHome or SwitchBot thermometer updates continue with other Bluetooth radios
   disabled.

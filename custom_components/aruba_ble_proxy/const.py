@@ -12,6 +12,7 @@ CONF_TRANSPORT_PREFIX = "transport_prefix"
 CONF_RADIO_PROFILE = "radio_profile"
 CONF_ENABLE_RADIO_PROFILE = "enable_radio_profile"
 CONF_ENABLE_ACTIVE_BLE = "enable_active_ble"
+CONF_ACTIVE_CONNECTION_SLOTS = "active_connection_slots"
 CONF_SETUP_COMPLETE = "setup_complete"
 CONF_ENTRY_TYPE = "entry_type"
 CONF_PARENT_ENTRY_ID = "parent_entry_id"
@@ -27,6 +28,7 @@ DEFAULT_ENDPOINT_PATH = "/aruba-ble-proxy"
 DEFAULT_TRANSPORT_PREFIX = "ha-ble"
 DEFAULT_RADIO_PROFILE = "ha-ble-radio"
 DEFAULT_ENABLE_ACTIVE_BLE = True
+DEFAULT_ACTIVE_CONNECTION_SLOTS = 1
 
 SERVICE_GENERATE_CLI = "generate_cli"
 SERVICE_GENERATE_CLEANUP_CLI = "generate_cleanup_cli"

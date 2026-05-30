@@ -1,6 +1,6 @@
 # Home Assistant Field Test Runbook
 
-This runbook is for testing candidate `0.3.0b3` on a real Home Assistant
+This runbook is for testing candidate `0.3.0b4` on a real Home Assistant
 instance with a real Aruba AP.
 
 Do not change active BLE code while running this checklist unless a test exposes
@@ -53,9 +53,9 @@ Then restart Home Assistant.
 Expected result after restart:
 
 - Integration loads without a setup error.
-- Version shown in Home Assistant is `0.3.0b3`.
-- The integration exposes one main `BLE advertisements` entity.
-- Disabled diagnostic entities are available but not all enabled by default.
+- Version shown in Home Assistant is `0.3.0b4`.
+- The integration exposes Aruba APs as Bluetooth scanner sources.
+- No Aruba BLE Proxy diagnostic sensors are created.
 
 ## Configure Aruba
 
@@ -89,34 +89,6 @@ ping ha.example.local
 Use the hostname that resolves to the Home Assistant LAN address reachable from
 the Aruba AP management path.
 
-## Enable Diagnostics
-
-Enable these disabled diagnostic entities for the duration of the test:
-
-- `Receiver connected sources`
-- `Receiver last peer`
-- `BLE advertisements`
-- `Bluetooth forwarded advertisements`
-- `Active BLE last action`
-- `Active BLE last action duration`
-- `Active BLE slowest action duration`
-- `Active BLE last action error`
-- `Active BLE actions sent`
-- `Active BLE action failures`
-- `Active BLE action timeouts`
-- `Active BLE operations in flight`
-- `Active BLE operations waiting`
-- `Active BLE pending characteristic reads`
-- `Active BLE pending device discoveries`
-- `Active BLE notification subscriptions`
-- `Active BLE characteristic waits`
-- `Active BLE characteristic wait timeouts`
-- `Active BLE last characteristic wait duration`
-- `Active BLE slowest characteristic wait duration`
-- `Active BLE notifications enabled`
-- `Active BLE notification updates`
-- `Active BLE notification callback errors`
-
 ## Test 1: Passive Regression
 
 Disable or physically remove other Bluetooth paths:
@@ -127,8 +99,6 @@ Disable or physically remove other Bluetooth paths:
 
 Pass criteria:
 
-- `Receiver connected sources` contains the Aruba AP MAC.
-- `BLE advertisements` increases.
 - Home Assistant Bluetooth advertisements page shows the Aruba AP MAC as source.
 - BTHome or SwitchBot thermometer entities continue updating.
 - Disabling the Aruba BLE Proxy integration stops those Aruba-sourced updates.
@@ -152,7 +122,7 @@ Fail evidence to collect:
 
 - Home Assistant startup log around `aruba_ble_proxy`.
 - Screenshot of the Bluetooth graph.
-- Values of the diagnostic entities listed above.
+- Screenshot of the Bluetooth advertisements page grouped by source.
 
 ## Test 3: Manual Active GATT Smoke Test
 
@@ -224,11 +194,9 @@ Accepted disconnect statuses:
 
 After disconnect, pass criteria:
 
-- `Active BLE operations in flight` returns to `0`.
-- `Active BLE pending characteristic reads` returns to `0`.
-- `Active BLE pending device discoveries` returns to `0`.
-- `Active BLE notification subscriptions` is not growing unexpectedly.
-- Passive BLE sensors still update.
+- The HA service call completes without a traceback.
+- No new `custom_components.aruba_ble_proxy` error is logged.
+- Passive BLE updates continue after the active test.
 
 ## Test 4: SwitchBot Lock / Lock Pro
 
@@ -268,7 +236,7 @@ Use [FIELD_TEST_REPORT_TEMPLATE.md](FIELD_TEST_REPORT_TEMPLATE.md) after
 testing. Minimal summary:
 
 ```text
-Candidate: 0.3.0b3
+Candidate: 0.3.0b4
 HA version:
 Aruba model/version:
 AP MAC:

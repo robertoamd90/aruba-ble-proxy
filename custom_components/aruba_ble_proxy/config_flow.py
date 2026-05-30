@@ -19,6 +19,7 @@ from homeassistant.core import callback
 
 from .const import (
     CONF_ACCESS_TOKEN,
+    CONF_ACTIVE_CONNECTION_SLOTS,
     CONF_AP_SOURCE,
     CONF_ENABLE_RADIO_PROFILE,
     CONF_ENABLE_ACTIVE_BLE,
@@ -33,6 +34,7 @@ from .const import (
     CONF_SETUP_COMPLETE,
     CONF_TRANSPORT_PREFIX,
     DEFAULT_ENDPOINT_PATH,
+    DEFAULT_ACTIVE_CONNECTION_SLOTS,
     DEFAULT_ENABLE_ACTIVE_BLE,
     DEFAULT_LISTEN_HOST,
     DEFAULT_LISTEN_PORT,
@@ -104,6 +106,23 @@ def _cli_filter_count() -> int:
     return len(parse_uuid_file(default_uuid_seed_path()))
 
 
+def _build_cli_placeholders(data: dict[str, Any]) -> dict[str, str]:
+    return {
+        "endpoint_url": _endpoint_url(data),
+        "profile_count": str(_cli_profile_count()),
+        "filter_count": str(_cli_filter_count()),
+        "cli_config": _generate_cli(data),
+        "cleanup_cli_config": _generate_cleanup_cli(data),
+    }
+
+
+async def _async_build_cli_placeholders(hass, data: dict[str, Any]) -> dict[str, str]:
+    executor = getattr(hass, "async_add_executor_job", None)
+    if executor is None:
+        return _build_cli_placeholders(data)
+    return await executor(_build_cli_placeholders, data)
+
+
 def _data_with_defaults(data: dict[str, Any]) -> dict[str, Any]:
     merged = {
         CONF_LISTEN_HOST: DEFAULT_LISTEN_HOST,
@@ -115,12 +134,17 @@ def _data_with_defaults(data: dict[str, Any]) -> dict[str, Any]:
         CONF_TRANSPORT_PREFIX: DEFAULT_TRANSPORT_PREFIX,
         CONF_ENABLE_RADIO_PROFILE: True,
         CONF_ENABLE_ACTIVE_BLE: DEFAULT_ENABLE_ACTIVE_BLE,
+        CONF_ACTIVE_CONNECTION_SLOTS: DEFAULT_ACTIVE_CONNECTION_SLOTS,
         CONF_RADIO_PROFILE: DEFAULT_RADIO_PROFILE,
         CONF_ENTRY_TYPE: ENTRY_TYPE_LISTENER,
         CONF_SETUP_COMPLETE: False,
     }
     merged.update(data)
     merged[CONF_ENDPOINT_PATH] = _clean_path(str(merged[CONF_ENDPOINT_PATH]))
+    merged[CONF_ACTIVE_CONNECTION_SLOTS] = max(
+        1,
+        int(merged[CONF_ACTIVE_CONNECTION_SLOTS]),
+    )
     return merged
 
 
@@ -172,6 +196,10 @@ class ArubaBleProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_TRANSPORT_PREFIX, default=DEFAULT_TRANSPORT_PREFIX): str,
                     vol.Required(CONF_ENABLE_RADIO_PROFILE, default=True): bool,
                     vol.Required(CONF_ENABLE_ACTIVE_BLE, default=DEFAULT_ENABLE_ACTIVE_BLE): bool,
+                    vol.Required(
+                        CONF_ACTIVE_CONNECTION_SLOTS,
+                        default=DEFAULT_ACTIVE_CONNECTION_SLOTS,
+                    ): int,
                     vol.Required(CONF_RADIO_PROFILE, default=DEFAULT_RADIO_PROFILE): str,
                 }
             ),
@@ -187,13 +215,10 @@ class ArubaBleProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="cli",
             data_schema=vol.Schema({}),
-            description_placeholders={
-                "endpoint_url": _endpoint_url(self._data),
-                "profile_count": str(_cli_profile_count()),
-                "filter_count": str(_cli_filter_count()),
-                "cli_config": _generate_cli(self._data),
-                "cleanup_cli_config": _generate_cleanup_cli(self._data),
-            },
+            description_placeholders=await _async_build_cli_placeholders(
+                self.hass,
+                self._data,
+            ),
         )
 
     @staticmethod
@@ -233,6 +258,10 @@ class ArubaBleProxyOptionsFlow(config_entries.OptionsFlow):
                     vol.Required(CONF_TRANSPORT_PREFIX, default=data[CONF_TRANSPORT_PREFIX]): str,
                     vol.Required(CONF_ENABLE_RADIO_PROFILE, default=data[CONF_ENABLE_RADIO_PROFILE]): bool,
                     vol.Required(CONF_ENABLE_ACTIVE_BLE, default=data[CONF_ENABLE_ACTIVE_BLE]): bool,
+                    vol.Required(
+                        CONF_ACTIVE_CONNECTION_SLOTS,
+                        default=data[CONF_ACTIVE_CONNECTION_SLOTS],
+                    ): int,
                     vol.Required(CONF_RADIO_PROFILE, default=data[CONF_RADIO_PROFILE]): str,
                 }
             ),
@@ -247,13 +276,10 @@ class ArubaBleProxyOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="cli",
             data_schema=vol.Schema({}),
-            description_placeholders={
-                "endpoint_url": _endpoint_url(self._data),
-                "profile_count": str(_cli_profile_count()),
-                "filter_count": str(_cli_filter_count()),
-                "cli_config": _generate_cli(self._data),
-                "cleanup_cli_config": _generate_cleanup_cli(self._data),
-            },
+            description_placeholders=await _async_build_cli_placeholders(
+                self.hass,
+                self._data,
+            ),
         )
 
 
