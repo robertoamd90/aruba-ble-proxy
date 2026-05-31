@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aruba-ble-proxy"
-version = "0.3.0b6"
+version = "0.3.0b7"
 description = "Aruba BLE scanner and experimental active GATT proxy for Home Assistant"
 requires-python = ">=3.11"
 license = "GPL-3.0-only"

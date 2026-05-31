@@ -1,6 +1,6 @@
 # Home Assistant Field Test Runbook
 
-This runbook is for testing candidate `0.3.0b6` on a real Home Assistant
+This runbook is for testing candidate `0.3.0b7` on a real Home Assistant
 instance with a real Aruba AP.
 
 Do not change active BLE code while running this checklist unless a test exposes
@@ -53,7 +53,7 @@ Then restart Home Assistant.
 Expected result after restart:
 
 - Integration loads without a setup error.
-- Version shown in Home Assistant is `0.3.0b6`.
+- Version shown in Home Assistant is `0.3.0b7`.
 - The integration exposes Aruba APs as Bluetooth scanner sources.
 - No Aruba BLE Proxy diagnostic sensors are created.
 
@@ -236,7 +236,7 @@ Use [FIELD_TEST_REPORT_TEMPLATE.md](FIELD_TEST_REPORT_TEMPLATE.md) after
 testing. Minimal summary:
 
 ```text
-Candidate: 0.3.0b6
+Candidate: 0.3.0b7
 HA version:
 Aruba model/version:
 AP MAC:

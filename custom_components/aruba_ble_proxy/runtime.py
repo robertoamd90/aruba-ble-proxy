@@ -811,7 +811,11 @@ class ArubaBleProxyRuntime:
         request: ArubaBleActionRequest,
         wait_result: bool = True,
     ) -> dict[str, Any]:
-        async with self._active_operation(ap_mac, request.device_mac):
+        async with self._active_operation(
+            ap_mac,
+            request.device_mac,
+            action_type=request.action_type,
+        ):
             local_response = self._local_connect_slot_response(ap_mac, request)
             if local_response is not None:
                 return local_response
@@ -999,13 +1003,16 @@ class ArubaBleProxyRuntime:
             raise ValueError(
                 "ap_mac, device_mac, service_uuid, and characteristic_uuid are required"
             )
-        async with self._active_operation(ap_mac, device_mac):
+        action_type = (
+            ACTION_GATT_WRITE_WITH_RESPONSE if with_response else ACTION_GATT_WRITE
+        )
+        async with self._active_operation(
+            ap_mac, device_mac, action_type=action_type
+        ):
             return await self._async_send_aruba_action_unlocked(
                 ap_mac=ap_mac,
                 request=ArubaBleActionRequest(
-                    action_type=ACTION_GATT_WRITE_WITH_RESPONSE
-                    if with_response
-                    else ACTION_GATT_WRITE,
+                    action_type=action_type,
                     device_mac=device_mac,
                     service_uuid=key[2],
                     characteristic_uuid=key[3],
@@ -1032,7 +1039,13 @@ class ArubaBleProxyRuntime:
             raise ValueError(
                 "ap_mac, device_mac, service_uuid, and characteristic_uuid are required"
             )
-        async with self._active_operation(ap_mac, device_mac):
+        async with self._active_operation(
+            ap_mac,
+            device_mac,
+            action_type=(
+                ACTION_GATT_INDICATION if indicate else ACTION_GATT_NOTIFICATION
+            ),
+        ):
             return await self._async_gatt_notification_unlocked(
                 ap_mac=ap_mac,
                 device_mac=device_mac,
@@ -1084,7 +1097,9 @@ class ArubaBleProxyRuntime:
             raise ValueError(
                 "ap_mac, device_mac, service_uuid, and characteristic_uuid are required"
             )
-        async with self._active_operation(ap_mac, device_mac):
+        async with self._active_operation(
+            ap_mac, device_mac, action_type=ACTION_GATT_NOTIFICATION
+        ):
             callbacks = self._notification_callbacks.get(key, [])
             if callback in callbacks:
                 return {
@@ -1160,7 +1175,9 @@ class ArubaBleProxyRuntime:
             raise ValueError(
                 "ap_mac, device_mac, service_uuid, and characteristic_uuid are required"
             )
-        async with self._active_operation(ap_mac, device_mac):
+        async with self._active_operation(
+            ap_mac, device_mac, action_type=ACTION_GATT_NOTIFICATION
+        ):
             callbacks = self._notification_callbacks.get(key, [])
             if callback not in callbacks:
                 return {
@@ -1425,7 +1442,9 @@ class ArubaBleProxyRuntime:
             raise ValueError(
                 "ap_mac, device_mac, service_uuid, and characteristic_uuid are required"
             )
-        async with self._active_operation(ap_mac, device_mac):
+        async with self._active_operation(
+            ap_mac, device_mac, action_type=ACTION_GATT_READ
+        ):
             return await self._async_gatt_read_unlocked(
                 ap_mac=ap_mac,
                 device_mac=device_mac,
@@ -1506,8 +1525,14 @@ class ArubaBleProxyRuntime:
                 characteristic_future.cancel()
 
     @asynccontextmanager
-    async def _active_operation(self, ap_mac: str, device_mac: str):
-        key = _source_operation_key(ap_mac)
+    async def _active_operation(
+        self,
+        ap_mac: str,
+        device_mac: str,
+        *,
+        action_type: str | None = None,
+    ):
+        key = _operation_lock_key(ap_mac, device_mac, action_type)
         slot = self._active_operation_slots.get(key)
         if slot is None:
             slot = _ActiveOperationSlot()
@@ -1875,6 +1900,26 @@ def _device_key(source: str, device_mac: str) -> tuple[str, str]:
 
 def _source_operation_key(source: str) -> tuple[str, str]:
     return (_normalize_mac(source) or source.upper(), "*")
+
+
+# Action types that must serialize across the entire AP source. BLE connect /
+# disconnect compete for the AP's connection slots, so they share a per-source
+# lock to preserve slot arbitration. GATT operations (read/write/notify) are
+# serialized per-device so that concurrent commands targeting different
+# devices on the same AP do not block each other.
+_PER_SOURCE_LOCK_ACTIONS = frozenset({ACTION_BLE_CONNECT, ACTION_BLE_DISCONNECT})
+
+
+def _operation_lock_key(
+    source: str,
+    device_mac: str,
+    action_type: str | None,
+) -> tuple[str, str]:
+    if action_type is None or action_type in _PER_SOURCE_LOCK_ACTIONS:
+        return _source_operation_key(source)
+    normalized_source = _normalize_mac(source) or source.upper()
+    normalized_device = _normalize_mac(device_mac) or device_mac.upper()
+    return (normalized_source, normalized_device)
 
 
 def _config_entry_exists(hass: Any, entry_id: str) -> bool:

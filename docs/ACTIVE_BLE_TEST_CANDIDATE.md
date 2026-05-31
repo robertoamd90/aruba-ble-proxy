@@ -4,7 +4,7 @@ This file freezes the current development direction for field testing. It is not
 a stable 1.0 definition yet; it is the checklist used to decide whether active
 BLE can become stable.
 
-Current candidate version: `0.3.0b6`
+Current candidate version: `0.3.0b7`
 
 ## What Is Frozen For This Candidate
 

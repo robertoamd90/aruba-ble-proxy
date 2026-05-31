@@ -1488,6 +1488,127 @@ def test_runtime_serializes_gatt_operations_until_read_value_arrives():
     asyncio.run(run_test())
 
 
+def test_runtime_runs_gatt_operations_in_parallel_for_different_devices_same_ap():
+    async def run_test():
+        class Receiver:
+            def __init__(self):
+                self.payloads = []
+                self.stats = type(
+                    "Stats",
+                    (),
+                    {
+                        "connections_opened": 0,
+                        "connections_closed": 0,
+                        "binary_messages": 0,
+                        "text_messages": 0,
+                        "invalid_tokens": 0,
+                        "decode_errors": 0,
+                        "last_peer": None,
+                    },
+                )()
+
+            async def async_send_to_source(self, source, payload):
+                self.payloads.append((source, payload))
+
+            def connected_sources(self):
+                return ["02:00:00:00:00:01"]
+
+        runtime = ArubaBleProxyRuntime(
+            hass=None,
+            host="0.0.0.0",
+            port=7443,
+            access_token="secret",
+        )
+        receiver = Receiver()
+        runtime._receiver = receiver
+
+        read_a = asyncio.create_task(
+            runtime.async_gatt_read(
+                ap_mac="02:00:00:00:00:01",
+                device_mac="02:00:00:00:01:01",
+                service_uuid="0000180f-0000-1000-8000-00805f9b34fb",
+                characteristic_uuid="00002a19-0000-1000-8000-00805f9b34fb",
+                timeout=1,
+            )
+        )
+        await asyncio.sleep(0)
+        assert len(receiver.payloads) == 1
+        action_id_a = runtime.stats.last_active_action_id or ""
+
+        read_b = asyncio.create_task(
+            runtime.async_gatt_read(
+                ap_mac="02:00:00:00:00:01",
+                device_mac="02:00:00:00:01:02",
+                service_uuid="0000180f-0000-1000-8000-00805f9b34fb",
+                characteristic_uuid="00002a19-0000-1000-8000-00805f9b34fb",
+                timeout=1,
+            )
+        )
+        await asyncio.sleep(0)
+
+        # Key assertion: the second GATT request reaches the wire before the
+        # first one's result has been received. Per-device locks must not
+        # serialize operations targeting different devices on the same AP.
+        assert len(receiver.payloads) == 2
+        action_id_b = runtime.stats.last_active_action_id or ""
+        assert action_id_a != action_id_b
+
+        diagnostics = runtime.diagnostic_attributes()
+        assert diagnostics["active_operation_locks"] == 2
+        assert diagnostics["active_operations_in_flight"] == 2
+        assert diagnostics["active_operations_waiting"] == 0
+
+        for action_id, device_mac, value in (
+            (action_id_b, "02:00:00:00:01:02", b"\x55"),
+            (action_id_a, "02:00:00:00:01:01", b"\x33"),
+        ):
+            await runtime._async_handle_message(
+                ArubaTelemetryMessage(
+                    reporter=_event().reporter,
+                    events=[],
+                    action_results=[
+                        ArubaActionResult(
+                            reporter=_event().reporter,
+                            action_id=action_id,
+                            action_type="gattRead",
+                            device_mac=device_mac,
+                            status=ArubaActionStatus.SUCCESS,
+                            status_name="success",
+                            status_string="ok",
+                            apb_mac=None,
+                        )
+                    ],
+                    characteristics=[],
+                )
+            )
+            await runtime._async_handle_message(
+                ArubaTelemetryMessage(
+                    reporter=_event().reporter,
+                    events=[],
+                    action_results=[],
+                    characteristics=[
+                        ArubaCharacteristic(
+                            reporter=_event().reporter,
+                            device_mac=device_mac,
+                            service_uuid="0000180f-0000-1000-8000-00805f9b34fb",
+                            characteristic_uuid="00002a19-0000-1000-8000-00805f9b34fb",
+                            value=value,
+                            description="Battery Level",
+                            properties=("read",),
+                        )
+                    ],
+                )
+            )
+
+        response_b = await read_b
+        response_a = await read_a
+        assert response_a["characteristic"]["value"] == "33"
+        assert response_b["characteristic"]["value"] == "55"
+        assert runtime.diagnostic_attributes()["active_operation_locks"] == 0
+
+    asyncio.run(run_test())
+
+
 def test_runtime_serializes_active_operations_per_ap_source():
     async def run_test():
         class Receiver:

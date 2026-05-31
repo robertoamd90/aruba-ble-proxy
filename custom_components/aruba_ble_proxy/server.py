@@ -48,6 +48,7 @@ class ArubaBleReceiver:
         self.stats = ReceiverStats()
         self._connections_by_source: dict[str, object] = {}
         self._sources_by_connection: dict[int, set[str]] = {}
+        self._send_locks: dict[str, asyncio.Lock] = {}
 
     async def run(self) -> None:
         LOGGER.info("Starting Aruba BLE receiver on %s:%s", self.host, self.port)
@@ -97,10 +98,16 @@ class ArubaBleReceiver:
             LOGGER.info("Aruba WebSocket disconnected: %s", peer)
 
     async def async_send_to_source(self, source: str, payload: bytes) -> None:
-        websocket = self._connections_by_source.get(source.upper())
+        normalized_source = source.upper()
+        websocket = self._connections_by_source.get(normalized_source)
         if websocket is None:
             raise KeyError(f"No active Aruba WebSocket for source {source}")
-        await websocket.send(payload)
+        lock = self._send_locks.get(normalized_source)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._send_locks[normalized_source] = lock
+        async with lock:
+            await websocket.send(payload)
 
     def connected_sources(self) -> list[str]:
         return sorted(self._connections_by_source)
@@ -116,6 +123,7 @@ class ArubaBleReceiver:
         for source in sources:
             if self._connections_by_source.get(source) is websocket:
                 self._connections_by_source.pop(source, None)
+                self._send_locks.pop(source, None)
                 disconnected_sources.append(source)
         return sorted(disconnected_sources)
 
