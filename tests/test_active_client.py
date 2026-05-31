@@ -370,6 +370,122 @@ def test_aruba_bleak_client_disconnect_accepts_source_disconnected(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_aruba_bleak_client_failed_disconnect_releases_session_slot(monkeypatch):
+    BleakError = _install_fake_bleak(monkeypatch)
+
+    class Runtime:
+        active_connection_slots = 1
+
+        def __init__(self):
+            self.active = set()
+            self.actions = []
+
+        def is_device_active(self, source, address):
+            return address in self.active
+
+        async def async_send_aruba_action(self, *, ap_mac, request, wait_result=True):
+            self.actions.append((request.action_type, request.device_mac))
+            if request.action_type == "bleConnect":
+                self.active.add(request.device_mac)
+                return {
+                    "sent": True,
+                    "result": {
+                        "received": True,
+                        "status": "success",
+                    },
+                }
+            self.active.discard(request.device_mac)
+            return {
+                "sent": True,
+                "result": {
+                    "received": True,
+                    "status": "failureGeneric",
+                },
+            }
+
+        async def async_wait_for_device_characteristics(self, address, *, source=None):
+            return []
+
+    async def run_test():
+        runtime = Runtime()
+        client_cls = create_aruba_bleak_client(runtime, "02:00:00:00:00:01")
+        first = client_cls("02:00:00:00:01:01")
+        second = client_cls("02:00:00:00:01:02")
+
+        assert await first.connect() is True
+        try:
+            await first.disconnect()
+        except BleakError as err:
+            assert "failureGeneric" in str(err)
+        else:
+            raise AssertionError("disconnect should surface the Aruba failure")
+
+        assert first.is_connected is False
+        assert await second.connect() is True
+        assert runtime.actions == [
+            ("bleConnect", "02:00:00:00:01:01"),
+            (ACTION_BLE_DISCONNECT, "02:00:00:00:01:01"),
+            ("bleConnect", "02:00:00:00:01:02"),
+        ]
+
+    asyncio.run(run_test())
+
+
+def test_aruba_bleak_client_cancelled_disconnect_releases_session_slot(monkeypatch):
+    _install_fake_bleak(monkeypatch)
+
+    class Runtime:
+        active_connection_slots = 1
+
+        def __init__(self):
+            self.active = set()
+            self.actions = []
+
+        def is_device_active(self, source, address):
+            return address in self.active
+
+        async def async_send_aruba_action(self, *, ap_mac, request, wait_result=True):
+            self.actions.append((request.action_type, request.device_mac))
+            if request.action_type == "bleConnect":
+                self.active.add(request.device_mac)
+                return {
+                    "sent": True,
+                    "result": {
+                        "received": True,
+                        "status": "success",
+                    },
+                }
+            self.active.discard(request.device_mac)
+            raise asyncio.CancelledError
+
+        async def async_wait_for_device_characteristics(self, address, *, source=None):
+            return []
+
+    async def run_test():
+        runtime = Runtime()
+        client_cls = create_aruba_bleak_client(runtime, "02:00:00:00:00:01")
+        first = client_cls("02:00:00:00:01:01")
+        second = client_cls("02:00:00:00:01:02")
+
+        assert await first.connect() is True
+        try:
+            await first.disconnect()
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError("disconnect should propagate cancellation")
+
+        assert first.is_connected is False
+        assert await asyncio.wait_for(second.connect(), timeout=1) is True
+        assert runtime.actions == [
+            ("bleConnect", "02:00:00:00:01:01"),
+            (ACTION_BLE_DISCONNECT, "02:00:00:00:01:01"),
+            ("bleConnect", "02:00:00:00:01:02"),
+        ]
+
+    asyncio.run(run_test())
+
+
 def test_aruba_bleak_client_requested_disconnect_suppresses_callback(monkeypatch):
     _install_fake_bleak(monkeypatch)
 
@@ -1000,6 +1116,43 @@ def test_aruba_bleak_client_supports_bleak_retry_cache_methods(monkeypatch):
         assert runtime.cleared == [("02:00:00:00:00:01", "02:00:00:00:01:01")]
 
         await client.set_connection_params(6, 12, 0, 400)
+
+    asyncio.run(run_test())
+
+
+def test_aruba_bleak_client_connect_reuses_cached_services_without_discovery(monkeypatch):
+    _install_fake_bleak_services(monkeypatch)
+
+    class Runtime:
+        def __init__(self):
+            self.discoveries = 0
+
+        def is_device_active(self, source, address):
+            return True
+
+        async def async_send_aruba_action(self, *, ap_mac, request, wait_result=True):
+            return {
+                "sent": True,
+                "result": {
+                    "received": True,
+                    "status": "success",
+                },
+            }
+
+        async def async_wait_for_device_characteristics(self, address, *, source=None):
+            self.discoveries += 1
+            return []
+
+    async def run_test():
+        runtime = Runtime()
+        client_cls = create_aruba_bleak_client(runtime, "02:00:00:00:00:01")
+        client = client_cls("02:00:00:00:01:01")
+        cached_services = build_service_collection([], advertisement_service_uuids={"fd3d"})
+        client.set_cached_services(cached_services)
+
+        assert await client.connect() is True
+        assert client.services is cached_services
+        assert runtime.discoveries == 0
 
     asyncio.run(run_test())
 
@@ -1861,6 +2014,170 @@ def test_aruba_bleak_client_connect_failure_sends_best_effort_disconnect(monkeyp
     asyncio.run(run_test())
 
 
+def test_aruba_bleak_client_failed_connect_action_sends_best_effort_disconnect(
+    monkeypatch,
+):
+    BleakError = _install_fake_bleak(monkeypatch)
+
+    class Runtime:
+        def __init__(self):
+            self.actions = []
+
+        def is_device_active(self, source, address):
+            return False
+
+        async def async_send_aruba_action(self, *, ap_mac, request, wait_result=True):
+            self.actions.append((request.action_type, wait_result))
+            if request.action_type == "bleConnect":
+                return {
+                    "sent": True,
+                    "result": {
+                        "received": True,
+                        "status": "failureGeneric",
+                        "status_string": "Invalid state",
+                    },
+                }
+            return {
+                "sent": True,
+                "result": {
+                    "received": True,
+                    "status": "success",
+                },
+            }
+
+        async def async_wait_for_device_characteristics(self, address):
+            raise AssertionError("discovery must not run after failed connect")
+
+    async def run_test():
+        runtime = Runtime()
+        client_cls = create_aruba_bleak_client(runtime, "02:00:00:00:00:01")
+        client = client_cls("02:00:00:00:01:01")
+
+        try:
+            await client.connect()
+        except BleakError as err:
+            assert "failureGeneric" in str(err)
+        else:
+            raise AssertionError("connect should fail")
+
+        assert client.is_connected is False
+        assert runtime.actions == [
+            ("bleConnect", True),
+            (ACTION_BLE_DISCONNECT, False),
+        ]
+
+    asyncio.run(run_test())
+
+
+def test_aruba_bleak_client_cancelled_connect_action_releases_session_slot(
+    monkeypatch,
+):
+    _install_fake_bleak(monkeypatch)
+
+    class Runtime:
+        active_connection_slots = 1
+
+        def __init__(self):
+            self.actions = []
+            self.active = set()
+
+        def is_device_active(self, source, address):
+            return address in self.active
+
+        async def async_send_aruba_action(self, *, ap_mac, request, wait_result=True):
+            self.actions.append((request.action_type, request.device_mac))
+            if request.device_mac == "02:00:00:00:01:01":
+                raise asyncio.CancelledError
+            self.active.add(request.device_mac)
+            return {
+                "sent": True,
+                "result": {
+                    "received": True,
+                    "status": "success",
+                },
+            }
+
+        async def async_wait_for_device_characteristics(self, address, *, source=None):
+            return []
+
+    async def run_test():
+        runtime = Runtime()
+        client_cls = create_aruba_bleak_client(runtime, "02:00:00:00:00:01")
+        first = client_cls("02:00:00:00:01:01")
+        second = client_cls("02:00:00:00:01:02")
+
+        try:
+            await first.connect()
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError("connect should propagate cancellation")
+
+        assert first.is_connected is False
+        assert await asyncio.wait_for(second.connect(), timeout=1) is True
+        assert runtime.actions == [
+            ("bleConnect", "02:00:00:00:01:01"),
+            ("bleConnect", "02:00:00:00:01:02"),
+        ]
+
+    asyncio.run(run_test())
+
+
+def test_aruba_bleak_client_serializes_connection_sessions_per_source(monkeypatch):
+    _install_fake_bleak(monkeypatch)
+
+    class Runtime:
+        active_connection_slots = 1
+
+        def __init__(self):
+            self.actions = []
+            self.active = set()
+
+        def is_device_active(self, source, address):
+            return address in self.active
+
+        async def async_send_aruba_action(self, *, ap_mac, request, wait_result=True):
+            self.actions.append((request.action_type, request.device_mac))
+            if request.action_type == "bleConnect":
+                self.active.add(request.device_mac)
+            elif request.action_type == ACTION_BLE_DISCONNECT:
+                self.active.discard(request.device_mac)
+            return {
+                "sent": True,
+                "result": {
+                    "received": True,
+                    "status": "success",
+                },
+            }
+
+        async def async_wait_for_device_characteristics(self, address, *, source=None):
+            return []
+
+    async def run_test():
+        runtime = Runtime()
+        client_cls = create_aruba_bleak_client(runtime, "02:00:00:00:00:01")
+        first = client_cls("02:00:00:00:01:01")
+        second = client_cls("02:00:00:00:01:02")
+
+        assert await first.connect() is True
+        second_connect = asyncio.create_task(second.connect())
+        await asyncio.sleep(0)
+
+        assert second_connect.done() is False
+        assert runtime.actions == [("bleConnect", "02:00:00:00:01:01")]
+
+        assert await first.disconnect() is True
+        assert await asyncio.wait_for(second_connect, timeout=1) is True
+
+        assert runtime.actions == [
+            ("bleConnect", "02:00:00:00:01:01"),
+            (ACTION_BLE_DISCONNECT, "02:00:00:00:01:01"),
+            ("bleConnect", "02:00:00:00:01:02"),
+        ]
+
+    asyncio.run(run_test())
+
+
 def test_aruba_bleak_client_connect_cancellation_cleans_up(monkeypatch):
     _install_fake_bleak(monkeypatch)
 
@@ -1966,6 +2283,9 @@ def test_aruba_bleak_client_uses_runtime_advertised_services_for_switchbot_fallb
     _install_fake_bleak_services(monkeypatch)
 
     class Runtime:
+        def __init__(self):
+            self.discoveries = 0
+
         def is_device_active(self, source, address):
             return True
 
@@ -1979,17 +2299,20 @@ def test_aruba_bleak_client_uses_runtime_advertised_services_for_switchbot_fallb
             }
 
         async def async_wait_for_device_characteristics(self, address):
+            self.discoveries += 1
             return []
 
         def service_uuids_for_device(self, address):
             return {"0000fd3d-0000-1000-8000-00805f9b34fb"}
 
     async def run_test():
-        client_cls = create_aruba_bleak_client(Runtime(), "02:00:00:00:00:01")
+        runtime = Runtime()
+        client_cls = create_aruba_bleak_client(runtime, "02:00:00:00:00:01")
         client = client_cls("02:00:00:00:01:01")
 
         await client.connect()
 
+        assert runtime.discoveries == 0
         assert client.services.get_characteristic(SWITCHBOT_READ_CHAR_UUID) is not None
         assert client.services.get_characteristic(SWITCHBOT_WRITE_CHAR_UUID) is not None
 

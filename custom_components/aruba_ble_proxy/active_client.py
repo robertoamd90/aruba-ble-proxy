@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+from time import monotonic
 from typing import Any
 
 from .active import (
@@ -54,6 +55,9 @@ def create_aruba_bleak_client(runtime: Any, source: str):
     from bleak.backends.service import BleakGATTServiceCollection
     from bleak.exc import BleakError
 
+    session_slots = max(1, int(getattr(runtime, "active_connection_slots", 1)))
+    session_semaphore = asyncio.Semaphore(session_slots)
+
     class ArubaBleakClient(BaseBleakClient):
         def __init__(self, address_or_ble_device, **kwargs):
             kwargs.setdefault("timeout", 10.0)
@@ -70,6 +74,7 @@ def create_aruba_bleak_client(runtime: Any, source: str):
             self._local_notify_callbacks = set()
             self._disconnect_listener_unsub = None
             self._disconnect_requested = False
+            self._session_slot_acquired = False
             self.services = BleakGATTServiceCollection()
 
         @property
@@ -94,24 +99,49 @@ def create_aruba_bleak_client(runtime: Any, source: str):
                 return True
             if pair:
                 raise BleakError("Aruba BLE pairing is not implemented yet")
+            await self._acquire_session_slot()
             timeout = int(kwargs.get("timeout", self._timeout))
-            response = await self._runtime.async_send_aruba_action(
-                ap_mac=self._source,
-                request=ArubaBleActionRequest(
-                    action_type=ACTION_BLE_CONNECT,
-                    device_mac=self.address,
-                    timeout=timeout,
-                ),
-                wait_result=True,
-            )
-            _raise_for_failed_action(
-                response,
-                BleakError,
-                allow_statuses=CONNECT_SUCCESS_STATUSES,
-            )
+            try:
+                response = await self._runtime.async_send_aruba_action(
+                    ap_mac=self._source,
+                    request=ArubaBleActionRequest(
+                        action_type=ACTION_BLE_CONNECT,
+                        device_mac=self.address,
+                        timeout=timeout,
+                    ),
+                    wait_result=True,
+                )
+            except asyncio.CancelledError:
+                self._release_session_slot()
+                raise
+            except Exception:
+                self._release_session_slot()
+                raise
+            try:
+                _raise_for_failed_action(
+                    response,
+                    BleakError,
+                    allow_statuses=CONNECT_SUCCESS_STATUSES,
+                )
+            except Exception:
+                try:
+                    await self._send_best_effort_disconnect()
+                finally:
+                    self._release_session_slot()
+                raise
             self._is_connected = True
             self._register_disconnect_listener()
             try:
+                advertisement_service_uuids = self._advertisement_service_uuids()
+                if _service_collection_has_characteristics(self.services):
+                    return True
+                advertised_services = build_service_collection(
+                    [],
+                    advertisement_service_uuids=advertisement_service_uuids,
+                )
+                if _service_collection_has_characteristics(advertised_services):
+                    self.services = advertised_services
+                    return True
                 characteristics = await _call_wait_for_device_characteristics(
                     self._runtime,
                     self.address,
@@ -121,7 +151,7 @@ def create_aruba_bleak_client(runtime: Any, source: str):
                     raise BleakError("Aruba BLE client disconnected during service discovery")
                 self.services = build_service_collection(
                     characteristics,
-                    advertisement_service_uuids=self._advertisement_service_uuids(),
+                    advertisement_service_uuids=advertisement_service_uuids,
                 )
                 return True
             except asyncio.CancelledError:
@@ -153,6 +183,12 @@ def create_aruba_bleak_client(runtime: Any, source: str):
                     allow_statuses=DISCONNECT_SUCCESS_STATUSES,
                 )
                 self._mark_disconnected(notify=False)
+            except asyncio.CancelledError:
+                self._mark_disconnected(notify=False)
+                raise
+            except Exception:
+                self._mark_disconnected(notify=False)
+                raise
             finally:
                 self._disconnect_requested = False
             return True
@@ -485,27 +521,52 @@ def create_aruba_bleak_client(runtime: Any, source: str):
 
         async def _cleanup_failed_connect(self) -> None:
             if self._is_connected and self._runtime_reports_connected():
-                try:
-                    await self._runtime.async_send_aruba_action(
-                        ap_mac=self._source,
-                        request=ArubaBleActionRequest(
-                            action_type=ACTION_BLE_DISCONNECT,
-                            device_mac=self.address,
-                            timeout=5,
-                        ),
-                        wait_result=False,
-                    )
-                except Exception:
-                    pass
+                await self._send_best_effort_disconnect()
             self._mark_disconnected(notify=False)
+
+        async def _send_best_effort_disconnect(self) -> None:
+            try:
+                await self._runtime.async_send_aruba_action(
+                    ap_mac=self._source,
+                    request=ArubaBleActionRequest(
+                        action_type=ACTION_BLE_DISCONNECT,
+                        device_mac=self.address,
+                        timeout=5,
+                    ),
+                    wait_result=False,
+                )
+            except Exception:
+                pass
+
+        async def _acquire_session_slot(self) -> None:
+            if self._session_slot_acquired:
+                return
+            started_at = monotonic()
+            await session_semaphore.acquire()
+            self._session_slot_acquired = True
+            waited_ms = max(0, round((monotonic() - started_at) * 1000))
+            if waited_ms:
+                LOGGER.debug(
+                    "Waited %sms for Aruba BLE session slot on %s",
+                    waited_ms,
+                    self._source,
+                )
+
+        def _release_session_slot(self) -> None:
+            if not self._session_slot_acquired:
+                return
+            self._session_slot_acquired = False
+            session_semaphore.release()
 
         def _mark_disconnected(self, *, notify: bool) -> None:
             if not self._is_connected and not self._notify_callbacks:
                 self._unregister_disconnect_listener()
+                self._release_session_slot()
                 return
             self._is_connected = False
             self._forget_local_notify_callbacks()
             self._unregister_disconnect_listener()
+            self._release_session_slot()
             if notify:
                 self._call_disconnected_callback()
 
@@ -590,6 +651,21 @@ def aruba_properties_to_bleak(properties: tuple[str | int, ...]) -> list[str]:
         if isinstance(value, str) and value not in result:
             result.append(value)
     return result
+
+
+def _service_collection_has_characteristics(services: Any) -> bool:
+    characteristics = getattr(services, "characteristics", None)
+    if isinstance(characteristics, (dict, list, tuple, set)):
+        return bool(characteristics)
+
+    service_map = getattr(services, "services", None)
+    if isinstance(service_map, dict):
+        return any(
+            bool(getattr(service, "characteristics", None))
+            for service in service_map.values()
+        )
+
+    return False
 
 
 def _is_resolved_characteristic(characteristic: Any) -> bool:

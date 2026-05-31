@@ -1,6 +1,6 @@
 # Field Test Report Template
 
-Use this template for candidate `0.3.0b4`.
+Use this template for candidate `0.3.0b5`.
 
 ## Environment
 

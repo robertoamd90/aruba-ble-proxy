@@ -1304,6 +1304,12 @@ class ArubaBleProxyRuntime:
         self.stats.last_active_action_type = action_type
         self.stats.last_active_action_duration_ms = duration_ms
         self.stats.active_action_duration_total_ms += duration_ms
+        _LOGGER.debug(
+            "Aruba BLE active action %s finished with %s in %sms",
+            action_type,
+            status,
+            duration_ms,
+        )
         if (
             self.stats.slowest_active_action_duration_ms is None
             or duration_ms > self.stats.slowest_active_action_duration_ms
@@ -1322,6 +1328,11 @@ class ArubaBleProxyRuntime:
         self.stats.last_active_characteristic_wait_status = status
         self.stats.last_active_characteristic_wait_duration_ms = duration_ms
         self.stats.active_characteristic_wait_duration_total_ms += duration_ms
+        _LOGGER.debug(
+            "Aruba BLE characteristic discovery wait finished with %s in %sms",
+            status,
+            duration_ms,
+        )
         if (
             self.stats.slowest_active_characteristic_wait_duration_ms is None
             or duration_ms > self.stats.slowest_active_characteristic_wait_duration_ms
