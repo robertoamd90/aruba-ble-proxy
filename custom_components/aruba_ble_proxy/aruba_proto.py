@@ -51,18 +51,19 @@ class ArubaTelemetryDecoder:
             self._warned_no_token = True
 
         reporter = _reporter_from_pb(telemetry.reporter)
-        LOGGER.info(
-            "Aruba telemetry reporter=%s topic=%s reported=%d bleData=%d characteristics=%d results=%d wifiData=%d hasStatus=%s hasApHealth=%s",
-            reporter.source,
-            _enum_name_or_value(telemetry.meta, "nbTopic"),
-            _repeated_len(telemetry, "reported"),
-            _repeated_len(telemetry, "bleData"),
-            _repeated_len(telemetry, "characteristics"),
-            _repeated_len(telemetry, "results"),
-            _repeated_len(telemetry, "wifiData"),
-            _has_field(telemetry, "status"),
-            _has_field(telemetry, "apHealth"),
-        )
+        if LOGGER.isEnabledFor(logging.DEBUG):
+            LOGGER.debug(
+                "Aruba telemetry reporter=%s topic=%s reported=%d bleData=%d characteristics=%d results=%d wifiData=%d hasStatus=%s hasApHealth=%s",
+                reporter.source,
+                _enum_name_or_value(telemetry.meta, "nbTopic"),
+                _repeated_len(telemetry, "reported"),
+                _repeated_len(telemetry, "bleData"),
+                _repeated_len(telemetry, "characteristics"),
+                _repeated_len(telemetry, "results"),
+                _repeated_len(telemetry, "wifiData"),
+                _has_field(telemetry, "status"),
+                _has_field(telemetry, "apHealth"),
+            )
 
         events: list[ArubaBleEvent] = []
 

@@ -259,6 +259,7 @@ class ArubaBleProxyRuntime:
             tuple[str, str, str, str],
             list[Callable[[ArubaCharacteristic], None]],
         ] = {}
+        self._notification_services_by_char: dict[tuple[str, str, str], set[str]] = {}
         self._last_passive_listener_update = 0.0
 
     async def async_start(self, entry: Any | None = None) -> None:
@@ -476,17 +477,25 @@ class ArubaBleProxyRuntime:
         service_uuid: str | None,
         characteristic_uuid: str,
     ) -> list[Callable[[ArubaCharacteristic], None]]:
+        services = self._notification_services_by_char.get(
+            (source, device_mac, characteristic_uuid)
+        )
+        if not services:
+            return []
+
+        if len(services) == 1 and service_uuid is not None and service_uuid in services:
+            primary = self._notification_callbacks.get(
+                (source, device_mac, service_uuid, characteristic_uuid)
+            )
+            return list(primary) if primary else []
+
         callbacks: list[Callable[[ArubaCharacteristic], None]] = []
         seen: set[int] = set()
-        for (
-            registered_source,
-            registered_device,
-            registered_service,
-            registered_characteristic,
-        ), registered_callbacks in self._notification_callbacks.items():
-            if registered_source != source or registered_device != device_mac:
-                continue
-            if registered_characteristic != characteristic_uuid:
+        for registered_service in services:
+            registered_callbacks = self._notification_callbacks.get(
+                (source, device_mac, registered_service, characteristic_uuid)
+            )
+            if not registered_callbacks:
                 continue
             if service_uuid is not None and registered_service != service_uuid:
                 _LOGGER.debug(
@@ -503,6 +512,19 @@ class ArubaBleProxyRuntime:
                 callbacks.append(callback)
                 seen.add(callback_id)
         return callbacks
+
+    def _track_notification_service(self, key: tuple[str, str, str, str]) -> None:
+        char_key = (key[0], key[1], key[3])
+        self._notification_services_by_char.setdefault(char_key, set()).add(key[2])
+
+    def _untrack_notification_service(self, key: tuple[str, str, str, str]) -> None:
+        char_key = (key[0], key[1], key[3])
+        services = self._notification_services_by_char.get(char_key)
+        if services is None:
+            return
+        services.discard(key[2])
+        if not services:
+            self._notification_services_by_char.pop(char_key, None)
 
     def _handle_status_update(self, status: ArubaStatusUpdate) -> None:
         self.stats.active_status_updates += 1
@@ -717,6 +739,7 @@ class ArubaBleProxyRuntime:
                 self.stats.active_notifications_enabled - len(callbacks),
             )
             self._notification_callbacks.pop(key, None)
+            self._untrack_notification_service(key)
 
     def _forget_device_characteristics(self, source: str, device_mac: str) -> None:
         normalized_source = _normalize_mac(source) or source.upper()
@@ -1095,6 +1118,7 @@ class ArubaBleProxyRuntime:
             result = response.get("result", {})
             if result.get("status") == "success":
                 self._notification_callbacks[key] = [callback]
+                self._track_notification_service(key)
                 self.stats.active_notifications_enabled += 1
             return response
 
@@ -1116,6 +1140,7 @@ class ArubaBleProxyRuntime:
         if callback in callbacks:
             return False
         callbacks.append(callback)
+        self._track_notification_service(key)
         self.stats.active_notifications_enabled += 1
         self._notify_listeners()
         return True
@@ -1177,6 +1202,7 @@ class ArubaBleProxyRuntime:
                     self.stats.active_notifications_enabled - 1,
                 )
                 self._notification_callbacks.pop(key, None)
+                self._untrack_notification_service(key)
             return response
 
     def forget_gatt_notify_callback(
@@ -1223,6 +1249,7 @@ class ArubaBleProxyRuntime:
             )
             if not callbacks:
                 self._notification_callbacks.pop(key, None)
+                self._untrack_notification_service(key)
             removed = True
         return removed
 

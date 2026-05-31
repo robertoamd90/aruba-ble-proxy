@@ -1244,6 +1244,51 @@ def test_aruba_bleak_client_notify_schedules_async_callback(monkeypatch):
     asyncio.run(run_test())
 
 
+def test_aruba_bleak_client_notify_dispatches_legacy_single_arg_callback(monkeypatch):
+    """Bleak's legacy notification callback contract is ``callback(value)`` with
+    a single positional argument. The dispatcher built at ``start_notify`` time
+    must detect this signature and pass only the value, not the characteristic.
+    """
+    _install_fake_bleak(monkeypatch)
+
+    class Runtime:
+        def __init__(self):
+            self.started = []
+
+        async def async_start_gatt_notify(self, **kwargs):
+            self.started.append(kwargs)
+            return {
+                "sent": True,
+                "result": {
+                    "received": True,
+                    "status": "success",
+                },
+            }
+
+    async def run_test():
+        runtime = Runtime()
+        client_cls = create_aruba_bleak_client(runtime, "02:00:00:00:00:01")
+        client = client_cls("02:00:00:00:01:01")
+        characteristic = SimpleNamespace(
+            service_uuid="0000180f-0000-1000-8000-00805f9b34fb",
+            uuid="00002a19-0000-1000-8000-00805f9b34fb",
+        )
+
+        seen: list[bytearray] = []
+
+        def legacy_callback(value):
+            seen.append(value)
+
+        client._is_connected = True
+        await client.start_notify(characteristic, legacy_callback)
+
+        runtime.started[-1]["callback"](SimpleNamespace(value=b"\x2a"))
+
+        assert seen == [bytearray([0x2A])]
+
+    asyncio.run(run_test())
+
+
 def test_aruba_bleak_client_runtime_disconnect_supports_async_callback(monkeypatch):
     _install_fake_bleak(monkeypatch)
 

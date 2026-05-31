@@ -280,14 +280,13 @@ def create_aruba_bleak_client(runtime: Any, source: str):
                     f"for {characteristic_uuid}"
                 )
 
+            dispatch = _make_notify_dispatcher(callback)
+
             def _notification_callback(update: ArubaCharacteristic) -> None:
                 value = bytearray(update.value)
                 if not value:
                     return
-                result = _call_compatible_callback(
-                    callback,
-                    ((characteristic, value), (value,)),
-                )
+                result = dispatch(characteristic, value)
                 if inspect.isawaitable(result):
                     self._schedule_notify_callback(result)
 
@@ -815,6 +814,51 @@ def _call_compatible_callback(callback: Any, arg_options: tuple[tuple[Any, ...],
         return callback(*args)
 
     return callback(*arg_options[0])
+
+
+def _make_notify_dispatcher(callback: Any):
+    """Return a fast dispatcher that invokes ``callback`` with the right arity.
+
+    The bleak callback contract accepts either ``callback(characteristic, value)``
+    (modern) or ``callback(value)`` (legacy). We resolve the signature once at
+    ``start_notify`` time so the per-notification hot path avoids repeated
+    ``inspect.signature`` calls.
+    """
+    try:
+        signature = inspect.signature(callback)
+    except (TypeError, ValueError):
+        def dispatch_uninspectable(char, value):
+            try:
+                return callback(char, value)
+            except TypeError:
+                return callback(value)
+
+        return dispatch_uninspectable
+
+    try:
+        signature.bind(None, None)
+    except TypeError:
+        pass
+    else:
+        def dispatch_two(char, value):
+            return callback(char, value)
+
+        return dispatch_two
+
+    try:
+        signature.bind(None)
+    except TypeError:
+        pass
+    else:
+        def dispatch_one(char, value):
+            return callback(value)
+
+        return dispatch_one
+
+    def dispatch_default(char, value):
+        return callback(char, value)
+
+    return dispatch_default
 
 
 async def _call_wait_for_device_characteristics(

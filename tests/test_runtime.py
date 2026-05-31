@@ -2121,6 +2121,7 @@ def test_runtime_notification_callback_error_is_isolated():
             updates.append(characteristic.value)
 
         runtime._notification_callbacks[key] = [failing_callback, working_callback]
+        runtime._track_notification_service(key)
 
         await runtime._async_handle_message(
             ArubaTelemetryMessage(
@@ -2168,6 +2169,7 @@ def test_runtime_notification_callbacks_are_source_scoped():
             updates.append(characteristic.value)
 
         runtime._notification_callbacks[key] = [callback]
+        runtime._track_notification_service(key)
         runtime.stats.active_notifications_enabled = 1
 
         for source, value in (
@@ -2195,6 +2197,68 @@ def test_runtime_notification_callbacks_are_source_scoped():
 
         assert updates == [b"\x66"]
         assert runtime.stats.active_notification_updates == 1
+
+    asyncio.run(run_test())
+
+
+def test_runtime_dispatches_notifications_to_multiple_service_uuid_registrations():
+    """Two registrations on the same (source, device, characteristic) but with
+    different service UUIDs must both receive the update. Some peers (e.g.
+    SwitchBot) report notifications with a service UUID that does not match the
+    one used at subscription time, so the dispatch path must merge across all
+    services rather than returning only the exact-key match."""
+    async def run_test():
+        runtime = ArubaBleProxyRuntime(
+            hass=None,
+            host="0.0.0.0",
+            port=7443,
+            access_token="secret",
+        )
+        source = "02:00:00:00:00:01"
+        device = "02:00:00:00:01:01"
+        characteristic_uuid = "00002a19-0000-1000-8000-00805f9b34fb"
+        primary_service = "0000180f-0000-1000-8000-00805f9b34fb"
+        secondary_service = "cba20d00-224d-11e6-9fb8-0002a5d5c51b"
+
+        primary_updates: list[bytes] = []
+        secondary_updates: list[bytes] = []
+
+        runtime.register_gatt_notify_callback(
+            ap_mac=source,
+            device_mac=device,
+            service_uuid=primary_service,
+            characteristic_uuid=characteristic_uuid,
+            callback=lambda c: primary_updates.append(c.value),
+        )
+        runtime.register_gatt_notify_callback(
+            ap_mac=source,
+            device_mac=device,
+            service_uuid=secondary_service,
+            characteristic_uuid=characteristic_uuid,
+            callback=lambda c: secondary_updates.append(c.value),
+        )
+
+        await runtime._async_handle_message(
+            ArubaTelemetryMessage(
+                reporter=_reporter(source),
+                events=[],
+                action_results=[],
+                characteristics=[
+                    ArubaCharacteristic(
+                        reporter=_reporter(source),
+                        device_mac=device,
+                        service_uuid=primary_service,
+                        characteristic_uuid=characteristic_uuid,
+                        value=b"\x77",
+                        description=None,
+                        properties=("notify",),
+                    )
+                ],
+            )
+        )
+
+        assert primary_updates == [b"\x77"]
+        assert secondary_updates == [b"\x77"]
 
     asyncio.run(run_test())
 
@@ -2242,6 +2306,7 @@ def test_runtime_stop_notify_keeps_callback_when_disable_fails():
             "00002a19-0000-1000-8000-00805f9b34fb",
         )
         runtime._notification_callbacks[key] = [callback]
+        runtime._track_notification_service(key)
         runtime.stats.active_notifications_enabled = 1
 
         stop_task = asyncio.create_task(
@@ -2501,6 +2566,7 @@ def test_runtime_tracks_device_disconnect_status_and_forgets_notifications():
             return None
 
         runtime._notification_callbacks[key] = [callback]
+        runtime._track_notification_service(key)
         runtime.stats.active_notifications_enabled = 1
 
         await runtime._async_handle_message(
@@ -3864,6 +3930,7 @@ def test_runtime_forgets_notification_callback_locally():
         return None
 
     runtime._notification_callbacks[key] = [callback]
+    runtime._track_notification_service(key)
     runtime.stats.active_notifications_enabled = 1
 
     removed = runtime.forget_gatt_notify_callback(
