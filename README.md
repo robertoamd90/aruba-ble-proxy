@@ -171,6 +171,11 @@ to record test results before changing active BLE behavior again.
 Manual install instructions are in [docs/INSTALL_MANUAL.md](docs/INSTALL_MANUAL.md). The install
 requires copying only `custom_components/aruba_ble_proxy`.
 
+## Hardware Compatibility
+
+Community-tested hardware and firmware combinations are tracked in
+[docs/HARDWARE_COMPATIBILITY.md](docs/HARDWARE_COMPATIBILITY.md).
+
 ## License
 
 This project is licensed under the **GNU General Public License v3.0**. See [LICENSE](LICENSE).
