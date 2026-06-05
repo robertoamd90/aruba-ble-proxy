@@ -1,7 +1,7 @@
 # Active BLE Feasibility
 
-This document defines the boundary between the field-tested passive path and
-the experimental active BLE work needed before a stable 1.0 release.
+This document records the active BLE/GATT design and the boundaries that remain
+for the 1.0 supported surface.
 
 ## Current State
 
@@ -14,9 +14,8 @@ Aruba AP -> Telemetry WebSocket -> BLE advertisements -> Home Assistant Bluetoot
 This is passive scanning. It can help Home Assistant integrations that only need
 advertisements, such as BTHome sensors or SwitchBot thermometer advertisements.
 
-It now includes an experimental southbound action path for active BLE/GATT
-testing and an experimental Home Assistant Bluetooth connector backed by Aruba
-southbound actions.
+It includes a southbound action path for active BLE/GATT and a Home Assistant
+Bluetooth connector backed by Aruba southbound actions.
 
 When supported by the running Home Assistant version, each Aruba AP source is
 registered as a remote Bluetooth scanner. With active BLE enabled, the scanner
@@ -70,8 +69,8 @@ The integration has local support for:
 - tracking AP WebSocket connections by reporter MAC
 - sending an action payload back to a connected AP
 - decoding northbound action results and characteristics
-- registering Aruba AP scanners with an experimental Home Assistant Bluetooth
-  connector backed by Aruba southbound actions
+- registering Aruba AP scanners with a Home Assistant Bluetooth connector backed
+  by Aruba southbound actions
 - keeping GATT reads, characteristic discovery waits, and notification callbacks
   scoped by AP source so two Aruba APs can see the same device without mixing
   active BLE responses
@@ -82,14 +81,13 @@ The integration has local support for:
   - `aruba_ble_proxy.gatt_write`
   - `aruba_ble_proxy.gatt_notify`
 
-These services are intentionally low-level. They are for proving Aruba active BLE
-behavior on real hardware before building a generic Home Assistant connector.
+These services are intentionally low-level. They are useful for diagnostics and
+for proving Aruba behavior outside a higher-level Home Assistant integration.
 When `wait_result: false` is used, the service only sends the southbound action
 and returns immediately; this includes `gatt_read`, which will not wait for a
 later northbound characteristic payload in that mode.
 
-The experimental connector currently maps the first set of Bleak operations to
-Aruba actions:
+The connector maps the first set of Bleak operations to Aruba actions:
 
 - `connect` -> `bleConnect`
 - `disconnect` -> `bleDisconnect`
@@ -106,10 +104,8 @@ but `client.services` remains empty and the diagnostic counters
 `active_characteristic_waits` / `active_characteristic_wait_timeouts` show what
 happened.
 
-Descriptor access, pairing, and unpairing are still not implemented in the Bleak
-connector. Notifications are experimental because Aruba's public protobufs do
-not document the enable/disable value bytes; the current implementation uses
-`01` to enable and `00` to disable.
+Descriptor access, pairing, bonding, and unpairing are not implemented in the
+Bleak connector. Notifications use `01` to enable and `00` to disable.
 
 Notification callback failures are isolated: one failed callback is logged and
 counted in `active_notification_callback_errors` without preventing other
@@ -126,21 +122,17 @@ same applies to `inactivityTimeout` and `sourceDisconnected`: if the device or
 AP is already gone while Home Assistant is disconnecting, cleanup should
 complete instead of surfacing a false failure.
 
-The connector is enabled by default in the current experimental build so field
-tests exercise the active path immediately. It can be disabled from integration
-options with `Enable experimental active BLE/GATT connector`; disabling it keeps
-the passive Aruba advertisement forwarding path active.
+The connector is enabled by default and can be disabled from integration
+options with `Enable active BLE/GATT connector`; disabling it keeps the passive
+Aruba advertisement forwarding path active.
 
-The Home Assistant connector currently exposes one active connection slot per
-Aruba AP. This is conservative: it matches the registered scanner slot count and
-avoids concurrent GATT sessions on one AP until real hardware testing proves
-that multiple active sessions are reliable. The runtime also serializes active
-southbound operations per Aruba AP source, including manual service calls, so a
-second operation for the same AP waits behind the first even if it targets a
-different BLE device. Once a BLE device is connected through an AP, a second
-connect for another device on the same AP is rejected locally with
-`noMoreConnectionSlots` instead of being sent to Aruba; a duplicate connect for
-the already active device returns local `alreadyConnected`.
+The Home Assistant connector exposes configurable active connection slots per
+Aruba AP. The runtime also serializes active southbound operations per Aruba AP
+source, including manual service calls, so a second operation for the same AP
+waits behind the first even if it targets a different BLE device. Once the AP's
+configured slots are full, a connect for another device on the same AP is
+rejected locally with `noMoreConnectionSlots` instead of being sent to Aruba; a
+duplicate connect for an already active device returns local `alreadyConnected`.
 
 For multi-AP deployments, active GATT state is keyed by Aruba source AP and BLE
 device. If two APs see the same lock or sensor, a GATT read or notification
@@ -159,10 +151,7 @@ This fallback is intentionally narrow. It is only activated for devices that
 advertise `FD3D`, and it should be removed or replaced if Aruba proves to emit a
 complete characteristic list reliably.
 
-## Unknowns To Resolve First
-
-Before exposing active BLE as a stable feature, the project needs proof that
-Aruba executes these commands reliably in an Instant/IAP setup.
+## Operational Unknowns
 
 Open questions:
 
@@ -171,21 +160,21 @@ Open questions:
 - Can commands target a specific AP radio reliably?
 - What does the AP return for connection failures, timeouts, pairing errors, and
   busy radio conditions?
-- Can multiple active sessions per AP be handled without breaking passive
-  forwarding, or should the one-slot limit remain for 1.0?
-- Can Home Assistant's Bluetooth stack use the experimental connector reliably
-  for real integrations, especially SwitchBot Lock/Lock Pro?
+- Can higher active slot counts per AP be handled without breaking passive
+  forwarding on every supported Aruba firmware?
+- Can Home Assistant's Bluetooth stack use the connector reliably for every
+  real integration? This is device- and integration-dependent.
 - Does the SwitchBot fallback cover the real command path, or does Aruba require
   additional service discovery/notification behavior?
 
-## Non-goals For The Passive MVP
+## Non-goals
 
-The passive MVP must not pretend to support:
+The integration must not pretend to support:
 
 - generic ESPHome Bluetooth Proxy equivalence
 - SwitchBot Lock commands
 - BLE pairing/bonding
-- arbitrary GATT read/write
+- arbitrary GATT behavior beyond the documented active BLE/GATT connector
 - Zigbee/ZHA coordinator behavior
 
 ## Proposed Investigation Path
@@ -197,11 +186,8 @@ The passive MVP must not pretend to support:
 3. Prove one minimal operation, such as connecting to a known BLE peripheral and
    reading one characteristic.
 4. Measure timeout and concurrency behavior with passive scanning still enabled.
-5. Only then decide whether the Home Assistant integration should expose active
-   BLE through the HA Bluetooth APIs or a narrower custom service.
-
-Until step 3 works on real hardware, active BLE remains a research track, not a
-supported feature.
+5. Keep expanding real-device validation without adding vendor-specific core
+   behavior unless it is explicitly documented as a compatibility fallback.
 
 ## Field Test Procedure
 

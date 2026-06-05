@@ -683,6 +683,11 @@ def _should_add_switchbot_fallback(
     advertisement_service_uuids: set[str],
     known_characteristic_uuids: set[str],
 ) -> bool:
+    # Some Aruba firmware reports the SwitchBot advertisement service but does
+    # not provide the command characteristics during GATT discovery. Keep this
+    # fallback narrow: only synthesize the known SwitchBot command service for
+    # devices that advertise FD3D, and do not infer characteristics for other
+    # vendors or protocols.
     return (
         SWITCHBOT_ADV_SERVICE_UUID
         in {_normalize_uuid(service_uuid) for service_uuid in advertisement_service_uuids}

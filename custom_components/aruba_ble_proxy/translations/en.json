@@ -11,8 +11,8 @@
           "access_token": "Access token (optional, generated if empty)",
           "transport_prefix": "Aruba transport profile prefix",
           "enable_radio_profile": "Generate Aruba IoT radio profile",
-          "enable_active_ble": "Enable experimental active BLE/GATT connector",
-          "active_connection_slots": "Experimental active BLE connection slots per AP",
+          "enable_active_ble": "Enable active BLE/GATT connector",
+          "active_connection_slots": "Active BLE connection slots per AP",
           "radio_profile": "Aruba IoT radio profile name"
         }
       },
@@ -26,8 +26,8 @@
           "access_token": "Access token (clear to regenerate)",
           "transport_prefix": "Aruba transport profile prefix",
           "enable_radio_profile": "Generate Aruba IoT radio profile",
-          "enable_active_ble": "Enable experimental active BLE/GATT connector",
-          "active_connection_slots": "Experimental active BLE connection slots per AP",
+          "enable_active_ble": "Enable active BLE/GATT connector",
+          "active_connection_slots": "Active BLE connection slots per AP",
           "radio_profile": "Aruba IoT radio profile name"
         }
       },
@@ -52,8 +52,8 @@
           "access_token": "Access token (clear to regenerate)",
           "transport_prefix": "Aruba transport profile prefix",
           "enable_radio_profile": "Generate Aruba IoT radio profile",
-          "enable_active_ble": "Enable experimental active BLE/GATT connector",
-          "active_connection_slots": "Experimental active BLE connection slots per AP",
+          "enable_active_ble": "Enable active BLE/GATT connector",
+          "active_connection_slots": "Active BLE connection slots per AP",
           "radio_profile": "Aruba IoT radio profile name"
         }
       },
@@ -74,7 +74,7 @@
     },
     "gatt_notify": {
       "name": "Configure Aruba GATT notifications",
-      "description": "Enable or disable GATT notifications through an Aruba AP for active BLE testing."
+      "description": "Enable or disable GATT notifications through an Aruba AP."
     }
   }
 }

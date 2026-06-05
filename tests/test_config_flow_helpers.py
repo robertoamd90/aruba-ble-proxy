@@ -48,11 +48,11 @@ from custom_components.aruba_ble_proxy.const import (  # noqa: E402
 )
 
 
-def test_data_defaults_enable_active_ble_for_current_experimental_build():
+def test_data_defaults_enable_active_ble_for_1_0():
     data = config_flow._data_with_defaults({})
 
     assert data[CONF_ENABLE_ACTIVE_BLE] is True
-    assert data[CONF_ACTIVE_CONNECTION_SLOTS] == 1
+    assert data[CONF_ACTIVE_CONNECTION_SLOTS] == 3
 
 
 def test_data_defaults_clamp_active_connection_slots():

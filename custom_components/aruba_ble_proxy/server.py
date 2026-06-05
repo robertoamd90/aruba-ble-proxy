@@ -16,6 +16,7 @@ LOGGER = logging.getLogger(__name__)
 EventHandler = Callable[[ArubaBleEvent], Awaitable[None]]
 MessageHandler = Callable[[ArubaTelemetryMessage], Awaitable[None]]
 SourceDisconnectHandler = Callable[[str], None]
+SEND_TIMEOUT = 2.0
 
 
 @dataclass
@@ -107,7 +108,7 @@ class ArubaBleReceiver:
             lock = asyncio.Lock()
             self._send_locks[normalized_source] = lock
         async with lock:
-            await websocket.send(payload)
+            await asyncio.wait_for(websocket.send(payload), timeout=SEND_TIMEOUT)
 
     def connected_sources(self) -> list[str]:
         return sorted(self._connections_by_source)

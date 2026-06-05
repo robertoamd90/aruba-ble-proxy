@@ -48,6 +48,8 @@ DISCONNECT_SUCCESS_STATUSES = {
 }
 
 PASSIVE_SENSOR_UPDATE_INTERVAL = 30.0
+RUNTIME_STATS_SET_LIMIT = 2048
+DEVICE_ADVERTISED_SERVICE_UUIDS_LIMIT = 4096
 
 
 @dataclass
@@ -109,6 +111,8 @@ class RuntimeStats:
     slowest_active_characteristic_wait_duration_ms: int | None = None
     active_characteristic_wait_duration_total_ms: int = 0
     last_active_notification_error: str | None = None
+    receiver_crashed: bool = False
+    receiver_last_error: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -177,6 +181,8 @@ class RuntimeStats:
                 self.active_characteristic_wait_duration_total_ms
             ),
             "last_active_notification_error": self.last_active_notification_error,
+            "receiver_crashed": self.receiver_crashed,
+            "receiver_last_error": self.receiver_last_error,
         }
 
 
@@ -284,9 +290,25 @@ class ArubaBleProxyRuntime:
                 self._receiver.run(),
                 "Aruba BLE Proxy receiver",
             )
+        self._task.add_done_callback(self._handle_receiver_task_done)
         await asyncio.sleep(0)
         if self._task.done():
             self._task.result()
+        self._notify_listeners()
+
+    def _handle_receiver_task_done(self, task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        try:
+            task.result()
+        except Exception as err:
+            self.stats.receiver_crashed = True
+            self.stats.receiver_last_error = f"{type(err).__name__}: {err}"
+            _LOGGER.exception("Aruba BLE receiver task crashed")
+        else:
+            self.stats.receiver_crashed = True
+            self.stats.receiver_last_error = "Receiver task stopped unexpectedly"
+            _LOGGER.error("Aruba BLE receiver task stopped unexpectedly")
         self._notify_listeners()
 
     async def async_stop(self) -> None:
@@ -1550,12 +1572,26 @@ class ArubaBleProxyRuntime:
         self.stats.events += 1
         source = _normalize_mac(event.source) or event.source.upper()
         address = _normalize_mac(event.address) or event.address.upper()
-        self.stats.addresses.add(address)
-        self.stats.sources.add(source)
-        self.stats.service_data.update(event.advertisement.service_data)
-        self.stats.manufacturer_ids.update(event.advertisement.manufacturer_data)
+        _bounded_set_add(self.stats.addresses, address, RUNTIME_STATS_SET_LIMIT)
+        _bounded_set_add(self.stats.sources, source, RUNTIME_STATS_SET_LIMIT)
+        for service_uuid in event.advertisement.service_data:
+            _bounded_set_add(
+                self.stats.service_data,
+                service_uuid,
+                RUNTIME_STATS_SET_LIMIT,
+            )
+        for manufacturer_id in event.advertisement.manufacturer_data:
+            _bounded_set_add(
+                self.stats.manufacturer_ids,
+                manufacturer_id,
+                RUNTIME_STATS_SET_LIMIT,
+            )
         if event.advertisement.local_name:
-            self.stats.local_names.add(event.advertisement.local_name)
+            _bounded_set_add(
+                self.stats.local_names,
+                event.advertisement.local_name,
+                RUNTIME_STATS_SET_LIMIT,
+            )
         self.stats.last_seen = datetime.now(UTC).isoformat()
         self.stats.last_address = address
         self.stats.last_source = source
@@ -1572,9 +1608,15 @@ class ArubaBleProxyRuntime:
             if service_uuid
         }
         if advertised_service_uuids:
-            self._device_advertised_service_uuids.setdefault(address, set()).update(
-                advertised_service_uuids
-            )
+            service_uuids = self._device_advertised_service_uuids.pop(address, set())
+            service_uuids.update(advertised_service_uuids)
+            self._device_advertised_service_uuids[address] = service_uuids
+            while (
+                len(self._device_advertised_service_uuids)
+                > DEVICE_ADVERTISED_SERVICE_UUIDS_LIMIT
+            ):
+                oldest_address = next(iter(self._device_advertised_service_uuids))
+                self._device_advertised_service_uuids.pop(oldest_address, None)
 
     def diagnostic_attributes(self) -> dict[str, Any]:
         receiver_stats = self._receiver.stats
@@ -1987,3 +2029,9 @@ def _format_device_keys(keys) -> list[dict[str, str]]:
         }
         for source, device_mac in sorted(keys)
     ]
+
+
+def _bounded_set_add(target: set[Any], value: Any, limit: int) -> None:
+    target.add(value)
+    while len(target) > limit:
+        target.pop()

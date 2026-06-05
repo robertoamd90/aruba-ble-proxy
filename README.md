@@ -1,8 +1,8 @@
 # Aruba BLE Proxy
 
-Experimental Home Assistant integration to use Aruba access points as Bluetooth
-Low Energy scanner sources, with passive advertisement forwarding and an
-experimental active BLE/GATT connector.
+Home Assistant integration to use Aruba access points as Bluetooth Low Energy
+scanner sources, with passive advertisement forwarding and an active BLE/GATT
+connector.
 
 This is not a device decoder and does not publish MQTT state. The intended direction is:
 
@@ -10,8 +10,8 @@ This is not a device decoder and does not publish MQTT state. The intended direc
 Aruba AP -> WebSocket/protobuf -> Home Assistant Bluetooth stack
 ```
 
-Current phase: passive path field-tested, active BLE/GATT implemented locally
-and awaiting wider real-device validation before 1.0.
+Current phase: 1.0. Passive BLE forwarding and active BLE/GATT are supported
+within the limits documented below.
 
 This project is not affiliated with, endorsed by, or sponsored by HPE Aruba
 Networking. The included integration icon/logo assets are original project
@@ -130,7 +130,7 @@ The initial custom integration lives under:
 custom_components/aruba_ble_proxy
 ```
 
-Implemented locally:
+Implemented:
 
 - config flow with endpoint, token, and Aruba profile settings
 - generated Aruba CLI block during setup and options flow
@@ -140,12 +140,13 @@ Implemented locally:
 - Aruba APs registered as passive Home Assistant Bluetooth scanner sources when supported by HA
 - forwarding into Home Assistant Bluetooth via `async_get_advertisement_callback`
 - no recorder-backed diagnostic sensors; validation is done through Home Assistant Bluetooth sources and logs
-- experimental connectable Home Assistant Bluetooth scanner support for active BLE/GATT
-- experimental Aruba BLE action path for connect, disconnect, GATT read/write, and notifications
+- connectable Home Assistant Bluetooth scanner support for active BLE/GATT
+- Aruba BLE action path for connect, disconnect, GATT read/write, and notifications
 - active BLE connection slots per AP are configurable
 - active GATT reads, characteristic discovery, and notifications are scoped by Aruba AP source
-- SwitchBot command service fallback when a device advertises SwitchBot service UUID `FD3D`
+- narrow SwitchBot command service fallback when a device advertises SwitchBot service UUID `FD3D`
 - passive BLE validated with BTHome and SwitchBot thermometer advertisements
+- active BLE/GATT validated in long-running Home Assistant field use
 
 Validated in a real Home Assistant setup:
 
@@ -153,20 +154,23 @@ Validated in a real Home Assistant setup:
 - Aruba BLE Data advertisements are forwarded into Home Assistant Bluetooth
 - BTHome events continue working with ESPHome BLE proxy and host Bluetooth disabled
 - SwitchBot thermometer advertisements work through the passive path
+- active BLE/GATT runs through Aruba AP sources without host Bluetooth or ESPHome BLE proxy
 
-Known limitation before 1.0:
+Known limits:
 
-- active BLE/GATT is implemented locally but still needs real Home Assistant
-  validation with devices such as SwitchBot Lock before it can be considered stable
+- BLE pairing, bonding, descriptor read/write, and unpairing are not implemented.
+- The proxy does not decode or repair application protocols such as BTHome,
+  Xiaomi, Shelly, or SwitchBot payloads.
+- Aruba may not report a complete GATT characteristic discovery for every
+  device. The only compatibility fallback in core is the narrow SwitchBot
+  command-service fallback for devices advertising `FD3D`.
+- Aruba BLE forwarding depends on Aruba IoT transport/profile filtering; this
+  project is not a universal catch-all for every nearby BLE frame.
 
-Active BLE feasibility notes are tracked in
-[docs/ACTIVE_BLE_FEASIBILITY.md](docs/ACTIVE_BLE_FEASIBILITY.md).
-The current field-test candidate and 1.0 criteria are tracked in
-[docs/ACTIVE_BLE_TEST_CANDIDATE.md](docs/ACTIVE_BLE_TEST_CANDIDATE.md).
-The Home Assistant field-test checklist is in
+Active BLE notes are tracked in
+[docs/ACTIVE_BLE_FEASIBILITY.md](docs/ACTIVE_BLE_FEASIBILITY.md). The Home
+Assistant field-test checklist is in
 [docs/HA_FIELD_TEST_RUNBOOK.md](docs/HA_FIELD_TEST_RUNBOOK.md).
-Use [docs/FIELD_TEST_REPORT_TEMPLATE.md](docs/FIELD_TEST_REPORT_TEMPLATE.md)
-to record test results before changing active BLE behavior again.
 
 Manual install instructions are in [docs/INSTALL_MANUAL.md](docs/INSTALL_MANUAL.md). The install
 requires copying only `custom_components/aruba_ble_proxy`.

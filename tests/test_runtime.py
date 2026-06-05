@@ -91,6 +91,70 @@ def test_runtime_tracks_last_advertisement_diagnostics():
     assert diagnostics["last_seen"]
 
 
+def test_runtime_bounds_advertisement_diagnostics(monkeypatch):
+    monkeypatch.setattr(runtime_module, "RUNTIME_STATS_SET_LIMIT", 2)
+    monkeypatch.setattr(runtime_module, "DEVICE_ADVERTISED_SERVICE_UUIDS_LIMIT", 2)
+    runtime = ArubaBleProxyRuntime(
+        hass=None,
+        host="0.0.0.0",
+        port=7443,
+        access_token="secret",
+    )
+
+    for index in range(3):
+        runtime._update_stats(
+            ArubaBleEvent(
+                reporter=_reporter(f"02:00:00:00:00:{index + 1:02x}"),
+                address=f"02:00:00:00:01:{index + 1:02x}",
+                frame_type=BleFrameType.ADV_IND,
+                rssi=-60,
+                address_type=MacAddrType.PUBLIC,
+                apb_mac=None,
+                payload=b"\x02\x01\x06",
+                advertisement=BleAdvertisement(
+                    local_name=f"device-{index}",
+                    service_data={
+                        f"0000fd{index:02x}-0000-1000-8000-00805f9b34fb": b"\x01"
+                    },
+                    manufacturer_data={0x0900 + index: b"\x01"},
+                ),
+            )
+        )
+
+    diagnostics = runtime.diagnostic_attributes()
+
+    assert diagnostics["addresses"] == 2
+    assert len(diagnostics["sources"]) == 2
+    assert len(diagnostics["service_data"]) == 2
+    assert len(diagnostics["manufacturer_ids"]) == 2
+    assert len(diagnostics["local_names"]) == 2
+    assert len(runtime._device_advertised_service_uuids) == 2
+    assert diagnostics["last_address"] == "02:00:00:00:01:03"
+
+
+def test_runtime_records_receiver_task_crash():
+    async def run_test():
+        runtime = ArubaBleProxyRuntime(
+            hass=None,
+            host="0.0.0.0",
+            port=7443,
+            access_token="secret",
+        )
+
+        async def fail():
+            raise RuntimeError("bind failed")
+
+        task = asyncio.create_task(fail())
+        await asyncio.sleep(0)
+        runtime._handle_receiver_task_done(task)
+
+        diagnostics = runtime.diagnostic_attributes()
+        assert diagnostics["receiver_crashed"] is True
+        assert diagnostics["receiver_last_error"] == "RuntimeError: bind failed"
+
+    asyncio.run(run_test())
+
+
 def test_runtime_throttles_passive_listener_updates(monkeypatch):
     monkeypatch.setattr(runtime_module, "PASSIVE_SENSOR_UPDATE_INTERVAL", 60.0)
     runtime = ArubaBleProxyRuntime(

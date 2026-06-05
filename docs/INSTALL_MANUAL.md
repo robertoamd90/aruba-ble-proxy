@@ -71,22 +71,22 @@ Validated so far:
 - BTHome events via Aruba BLE Data
 - SwitchBot thermometer advertisements
 
-Experimental active BLE work in the local development build:
+Active BLE/GATT support:
 
 - Aruba APs are registered as connectable Home Assistant Bluetooth scanner sources
 - connect, disconnect, GATT read/write, and notification actions are wired through
   Aruba's southbound action protocol
-- one active connection slot is exposed per Aruba AP until concurrent GATT
-  sessions are validated on real hardware
+- active connection slots are configurable per Aruba AP
 - GATT reads, characteristic discovery waits, and notification callbacks are
   scoped by Aruba AP source for multi-AP setups
 - SwitchBot `FD3D` devices get a narrow command-service fallback for PySwitchbot
 
-Still requiring real Home Assistant validation before a stable release:
+Known limits:
 
-- SwitchBot Lock/Lock Pro active commands
 - pairing/bonding workflows
-- long-running reconnect, timeout, and AP disconnect behavior
+- descriptor read/write and unpairing
+- generic repair of incomplete Aruba GATT discovery
+- application-level decoding or repair of vendor payloads
 
 ## Current limitation
 

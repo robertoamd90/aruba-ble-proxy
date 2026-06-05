@@ -1,51 +1,88 @@
-# Aruba BLE Proxy for Home Assistant - Spec v0.1
+# Aruba BLE Proxy for Home Assistant - Spec v1.0
 
 ## Goal
 
-Allow Home Assistant to use Aruba access points as passive remote Bluetooth Low Energy scanners.
+Allow Home Assistant to use Aruba access points as Bluetooth Low Energy scanner
+sources.
 
-The integration must forward raw BLE advertisements from Aruba APs into the Home Assistant Bluetooth stack so existing Home Assistant integrations can decode supported devices.
-
-## Non-Goals for MVP
-
-- No MQTT transport.
-- No device-specific decoders.
-- No iBeacon, BTHome, Xiaomi, Shelly, SwitchBot, or vendor-specific parsing in this project.
-- No device deduplication by MAC/address in this project.
-- No AP best-source selection in this project.
-- No active BLE/GATT support in the first version.
-- No required external bridge, container, or extra local machine.
-
-## Architecture
+The integration forwards BLE advertisements from Aruba APs into the Home
+Assistant Bluetooth stack and exposes an Aruba-backed active BLE/GATT connector
+for integrations that use Bleak.
 
 ```text
 Aruba AP(s)
-  -> WebSocket listener on dedicated Home Assistant port
+  -> WebSocket listener on Home Assistant
   -> Aruba protobuf decoder
   -> BLE advertisement normalizer
   -> Home Assistant Bluetooth scanner API
   -> Existing Home Assistant Bluetooth integrations
+
+Home Assistant Bleak client
+  -> Aruba southbound BLE/GATT action
+  -> Aruba AP
+  -> BLE peripheral
 ```
+
+## Supported Surface
+
+- WebSocket receiver for one or more Aruba APs.
+- Aruba protobuf decoding for BLE Data, GATT characteristics, action results,
+  and device status updates.
+- Passive BLE advertisement forwarding into Home Assistant Bluetooth.
+- Per-AP Home Assistant Bluetooth scanner registration when supported by the
+  running Home Assistant version.
+- Active BLE connect/disconnect through Aruba southbound actions.
+- GATT read/write and notification enable/disable through Aruba southbound
+  actions.
+- Active connection slots per Aruba AP, configurable from integration options.
+- GATT state, characteristic waits, notification callbacks, and connected-device
+  state scoped by Aruba AP source and BLE device.
+- Narrow SwitchBot command-service fallback for devices advertising service UUID
+  `FD3D` when Aruba does not report the known command characteristics.
+- Manual services for diagnostics and direct action testing:
+  - `aruba_ble_proxy.ble_connect`
+  - `aruba_ble_proxy.ble_disconnect`
+  - `aruba_ble_proxy.gatt_read`
+  - `aruba_ble_proxy.gatt_write`
+  - `aruba_ble_proxy.gatt_notify`
+
+## Non-Goals
+
+- No MQTT transport.
+- No device-specific decoders.
+- No parsing, decrypting, repairing, or deduplicating application protocols such
+  as BTHome, Xiaomi/Mi, Shelly, SwitchBot payload formats, iBeacon, or vendor
+  telemetry.
+- No generic invention of GATT characteristics when Aruba does not report them.
+- No BLE pairing, bonding, unpairing, or descriptor read/write.
+- No AP best-source selection policy beyond Home Assistant's Bluetooth behavior
+  and the selected Aruba AP source for active connections.
+- No required external bridge, container, or extra local machine.
 
 ## Home Assistant Behavior
 
 - A single custom integration named `Aruba BLE Proxy`.
 - A dedicated WebSocket listener, default port `7443`, configurable.
-- A single integration configuration entry.
 - A generated or user-provided access token.
 - Aruba APs are discovered automatically when they connect.
 - Every Aruba `reporter.mac` is treated as a separate Bluetooth scanner source.
 - BLE advertisements are passed through without semantic device interpretation.
+- Active BLE can be enabled or disabled from integration options.
+- Active connection slots per AP are configurable and enforced locally before
+  sending new connect actions to Aruba.
 
 ## Aruba Behavior
 
-The user configures an Aruba IoT Transport Profile pointing to Home Assistant:
+The user configures Aruba IoT profiles pointing to Home Assistant:
 
 ```text
-ws://<home-assistant-ip>:7443/
+ws://<home-assistant-ip>:7443/aruba-ble-proxy
 ```
 
-The Aruba side must be configured to forward raw BLE advertisement data for the relevant device classes. The exact Aruba UI/CLI steps need validation with real hardware and firmware.
+Aruba must be configured to forward BLE Data for the desired service UUIDs or
+device classes. Aruba firmware and profile behavior decide which advertisements
+are sent to the WebSocket endpoint; this project does not make Aruba forward
+unfiltered BLE traffic by itself.
 
 ## Security
 
@@ -54,79 +91,52 @@ The Aruba side must be configured to forward raw BLE advertisement data for the 
 - Use constant-time token comparison.
 - Never log token values.
 - If no token is configured, run in explicitly insecure mode and log that state.
-- Optional future controls:
-  - IP/subnet allowlist for APs.
-  - TLS / `wss://`.
-  - token rotation.
-  - rate limiting failed connections.
 
-## Passive MVP
+Potential future controls:
 
-The first phase proves that Aruba BLE data can be received, decoded, normalized, and later injected into Home Assistant.
+- IP/subnet allowlist for APs.
+- TLS / `wss://`.
+- token rotation.
+- rate limiting failed connections.
 
-Required behavior:
+## GATT Discovery Contract
 
-1. Accept WebSocket connections from one or more Aruba APs.
-2. Decode Aruba telemetry protobuf frames.
-3. Extract `Reporter` data:
-   - AP name
-   - AP MAC
-   - AP IP
-   - hardware type
-   - software version
-4. Extract `BleData` data:
-   - device MAC
-   - frame type
-   - raw advertisement payload
-   - RSSI
-   - address type
-   - APB MAC, if present
-5. Parse BLE advertising data only into generic AD structures:
-   - local name
-   - service UUIDs
-   - manufacturer data
-   - service data
-6. Preserve unknown AD structures without failing.
-7. Emit one normalized event per Aruba BLE frame.
+When Aruba reports GATT characteristics, the integration builds a normal Bleak
+service collection from Aruba's service UUID, characteristic UUID, and property
+metadata.
 
-## Home Assistant MVP
+When Aruba does not report a characteristic list, the integration cannot build a
+generic service collection from advertising alone. Advertising commonly exposes
+service UUIDs but not characteristic UUIDs or properties.
 
-After the standalone receiver works with real AP traffic:
+The only built-in exception is the narrow SwitchBot fallback:
 
-1. Create a custom integration. Implemented initially under `custom_components/aruba_ble_proxy`.
-2. Start the dedicated WebSocket listener inside Home Assistant. Implemented; requires HA runtime test.
-3. Register external passive Bluetooth scanner sources via Home Assistant Bluetooth APIs. Current implementation forwards `BluetoothServiceInfoBleak` via `async_get_advertisement_callback`; scanner source registration still needs HA runtime validation.
-4. Convert normalized events into `BluetoothServiceInfoBleak`. Implemented.
-5. Validate with already-supported BLE devices. Pending real HA test.
+- trigger: advertised service UUID `FD3D`
+- service: `cba20d00-224d-11e6-9fb8-0002a5d5c51b`
+- write characteristic: `cba20002-224d-11e6-9fb8-0002a5d5c51b`
+- read/notify characteristic: `cba20003-224d-11e6-9fb8-0002a5d5c51b`
 
-## Active BLE Future
+This is a compatibility fallback for known SwitchBot command characteristics,
+not a generic Aruba discovery replacement.
 
-Active BLE/GATT support is explicitly out of scope for MVP, but the architecture should not block it.
+## Limits For 1.0
 
-Aruba exposes a Southbound API for:
+- Active BLE/GATT is supported, but not equivalent to a local host Bluetooth
+  adapter or ESPHome Bluetooth Proxy in every edge case.
+- Pairing/bonding workflows are not implemented.
+- Application payload correctness remains the responsibility of the BLE device
+  firmware and the Home Assistant integration that decodes it.
+- The proxy does not decrypt encrypted BLE application payloads.
+- Aruba characteristic discovery gaps are exposed as missing characteristics
+  unless covered by the narrow SwitchBot fallback above.
 
-- BLE connect/disconnect.
-- GATT read/write.
-- GATT notifications/indications.
-- authentication/encryption/bonding.
+## Milestones Reached
 
-Future work may introduce an active BLE client layer, but only after passive scanner behavior is proven and stable.
-
-## Open Questions
-
-- Does every target Aruba firmware populate `Telemetry.meta.access_token`?
-- Does Aruba expose any supported configuration for generic raw BLE forwarding? Initial AP-515 / AOS 8.13 tests and external Aruba IoT guide notes suggest BLE Data Forwarding is limited to known BLE vendor classes or explicit filters, not `all` / `unclassified`.
-- Does Aruba forward enough scan response data for Home Assistant integrations that rely on it?
-- Should scan response be emitted as independent observations or merged with advertisements before passing to Home Assistant?
-- What is the minimal correct `BluetoothServiceInfoBleak` payload for a passive external scanner?
-- How should Home Assistant diagnostics expose AP connection status without overwhelming users?
-
-## Milestones
-
-1. Write project specification.
-2. Build standalone Aruba WebSocket receiver and BLE normalizer.
-3. Validate with captured Aruba traffic.
-4. Build minimal Home Assistant custom integration.
-5. Register/forward passive scanner sources in Home Assistant.
-6. Test with real BLE devices already supported by Home Assistant.
-7. Add diagnostics, configuration flow, and security hardening.
+1. Standalone Aruba WebSocket receiver and BLE normalizer.
+2. Home Assistant custom integration and config flow.
+3. Aruba CLI generation and cleanup generation.
+4. Passive BLE forwarding into Home Assistant Bluetooth.
+5. Per-AP scanner registration.
+6. Active BLE/GATT action path through Aruba southbound protobufs.
+7. Source-scoped active state for multi-AP deployments.
+8. Narrow SwitchBot compatibility fallback for incomplete Aruba discovery.

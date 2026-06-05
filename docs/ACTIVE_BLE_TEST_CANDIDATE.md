@@ -1,15 +1,14 @@
-# Active BLE Test Candidate
+# Active BLE 1.0 Field Notes
 
-This file freezes the current development direction for field testing. It is not
-a stable 1.0 definition yet; it is the checklist used to decide whether active
-BLE can become stable.
+This file records the field-test direction used to promote active BLE/GATT into
+the 1.0 supported surface.
 
-Current candidate version: `0.3.0b7`
+Current version: `1.0.0`
 
 ## What Is Frozen For This Candidate
 
-The candidate keeps the passive path and enables the experimental active BLE
-connector by default:
+The 1.0 release keeps the passive path and enables the active BLE connector by
+default:
 
 ```text
 Aruba AP -> Telemetry WebSocket -> Home Assistant Bluetooth scanner
@@ -21,15 +20,14 @@ The intended behavior for this candidate is:
 - Aruba APs appear as Home Assistant Bluetooth scanner sources.
 - Passive advertisements continue to reach Home Assistant integrations.
 - Home Assistant can attempt active GATT through the Aruba AP source.
-- Only one active BLE connection per Aruba AP is allowed.
+- Active BLE connection slots per Aruba AP are configurable.
 - Active operations are serialized per Aruba AP.
 - GATT state, notifications, and characteristic waits are scoped by Aruba AP and
   BLE device.
 - SwitchBot `FD3D` devices get the narrow PySwitchbot command-service fallback
   when Aruba does not publish a characteristic list.
 
-No further active BLE behavior should be added before field testing this
-candidate unless a test exposes a blocking bug.
+No further active BLE behavior should be added without a clear field-test case.
 
 ## What Local Tests Prove
 
@@ -38,15 +36,15 @@ The Python tests prove only integration-side behavior:
 - Aruba protobuf action messages are encoded and decoded correctly enough for
   the implemented paths.
 - Runtime state tracks pending actions, disconnects, notification callbacks,
-  AP-source scoping, and one-slot-per-AP guards.
+  AP-source scoping, and per-AP slot guards.
 - The custom Bleak client maps Home Assistant operations to Aruba actions.
 - Failure paths such as timeouts, disconnects, duplicated connects, and callback
   errors do not leave obvious stale local state.
 - The CLI generator and service schemas remain syntactically valid.
 
-Local tests do **not** prove that an Aruba AP firmware accepts every southbound
-action or that a commercial BLE integration such as SwitchBot Lock will complete
-its real command flow.
+Local tests do **not** prove that every Aruba AP firmware accepts every
+southbound action or that every commercial BLE integration will complete its
+real command flow.
 
 ## What Home Assistant Field Tests Must Prove
 
@@ -117,9 +115,7 @@ Minimum 1.0 criteria:
 - Passive BLE forwarding is stable and remains the primary supported feature.
 - Aruba AP scanner registration works consistently in Home Assistant.
 - Active BLE can be enabled or disabled from options without reinstalling.
-- Active GATT either works for at least one real supported workflow or is clearly
-  labeled experimental and disabled by default.
-- The one-active-connection-per-AP limit is documented and enforced.
+- The configured active-connection slots per AP are documented and enforced.
 - Startup, unload, reload, and receiver disconnects clean up tasks and local
   state.
 - Diagnostics expose enough state to troubleshoot failed active operations.
@@ -127,10 +123,9 @@ Minimum 1.0 criteria:
 - The repository has no required uncommitted vendor checkout for normal tests or
   manual installation.
 
-If SwitchBot Lock works reliably through Home Assistant, active BLE can be part
-of the 1.0 supported surface with the documented AP slot limit. If it does not,
-1.0 should keep active BLE experimental or disabled by default instead of
-pretending to be a complete BLE proxy replacement.
+Active BLE is part of the 1.0 supported surface with documented limits. It is
+not a promise that every BLE device or every Home Assistant Bluetooth
+integration works through Aruba.
 
 ## Stop Conditions During Field Testing
 

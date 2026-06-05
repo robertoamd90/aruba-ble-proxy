@@ -1,6 +1,6 @@
 # Field Test Report Template
 
-Use this template for candidate `0.3.0b7`.
+Use this template for version `1.0.0`.
 
 ## Environment
 
@@ -106,6 +106,6 @@ Candidate usable for passive path: yes/no
 Candidate usable for active GATT diagnostics: yes/no
 Candidate usable for SwitchBot Lock workflow: yes/no
 Promote active BLE toward 1.0 support: yes/no
-Keep active BLE experimental/disabled by default: yes/no
+Keep active BLE enabled by default: yes/no
 Blocking bugs found:
 ```

@@ -11,8 +11,8 @@
           "access_token": "Token di accesso (opzionale, generato se vuoto)",
           "transport_prefix": "Prefisso transport profile Aruba",
           "enable_radio_profile": "Genera IoT radio profile Aruba",
-          "enable_active_ble": "Abilita connector BLE/GATT attivo sperimentale",
-          "active_connection_slots": "Slot connessione BLE attiva sperimentali per AP",
+          "enable_active_ble": "Abilita connector BLE/GATT attivo",
+          "active_connection_slots": "Slot connessione BLE attiva per AP",
           "radio_profile": "Nome IoT radio profile Aruba"
         }
       },
@@ -26,8 +26,8 @@
           "access_token": "Token di accesso (svuota per rigenerarlo)",
           "transport_prefix": "Prefisso transport profile Aruba",
           "enable_radio_profile": "Genera IoT radio profile Aruba",
-          "enable_active_ble": "Abilita connector BLE/GATT attivo sperimentale",
-          "active_connection_slots": "Slot connessione BLE attiva sperimentali per AP",
+          "enable_active_ble": "Abilita connector BLE/GATT attivo",
+          "active_connection_slots": "Slot connessione BLE attiva per AP",
           "radio_profile": "Nome IoT radio profile Aruba"
         }
       },
@@ -52,8 +52,8 @@
           "access_token": "Token di accesso (svuota per rigenerarlo)",
           "transport_prefix": "Prefisso transport profile Aruba",
           "enable_radio_profile": "Genera IoT radio profile Aruba",
-          "enable_active_ble": "Abilita connector BLE/GATT attivo sperimentale",
-          "active_connection_slots": "Slot connessione BLE attiva sperimentali per AP",
+          "enable_active_ble": "Abilita connector BLE/GATT attivo",
+          "active_connection_slots": "Slot connessione BLE attiva per AP",
           "radio_profile": "Nome IoT radio profile Aruba"
         }
       },
@@ -74,7 +74,7 @@
     },
     "gatt_notify": {
       "name": "Configura notifiche GATT Aruba",
-      "description": "Abilita o disabilita notifiche GATT tramite un AP Aruba per test BLE attivo."
+      "description": "Abilita o disabilita notifiche GATT tramite un AP Aruba."
     }
   }
 }
