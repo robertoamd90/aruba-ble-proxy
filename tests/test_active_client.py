@@ -5,13 +5,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from custom_components.aruba_ble_proxy.active import ACTION_BLE_DISCONNECT
-from custom_components.aruba_ble_proxy.active_client import (
+from aruba_iot_ble.compatibility import (
     SWITCHBOT_READ_CHAR_UUID,
     SWITCHBOT_WRITE_CHAR_UUID,
-    build_service_collection,
-    create_aruba_bleak_client,
 )
+from custom_components.aruba_ble_proxy.active import ACTION_BLE_DISCONNECT
+from custom_components.aruba_ble_proxy.active_client import build_service_collection, create_aruba_bleak_client
 from custom_components.aruba_ble_proxy.models import ArubaCharacteristic, Reporter
 
 

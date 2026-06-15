@@ -2,7 +2,7 @@
 set -euo pipefail
 
 proto_dir="${ARUBA_PROTO_DIR:-vendor/aos8-iot-server-example-websocket/proto_files/source}"
-out_dir="${ARUBA_PROTO_OUT:-custom_components/aruba_ble_proxy/proto_generated}"
+out_dir="${ARUBA_PROTO_OUT:-custom_components/aruba_ble_proxy/aruba_iot_ble/proto_generated}"
 
 if [ ! -d "$proto_dir" ]; then
   cat >&2 <<EOF

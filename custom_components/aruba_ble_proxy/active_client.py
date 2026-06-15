@@ -11,6 +11,7 @@ from .active import (
     ACTION_BLE_DISCONNECT,
     ArubaBleActionRequest,
 )
+from .aruba_iot_ble.compatibility import apply_gatt_overrides
 from .models import ArubaCharacteristic
 
 
@@ -39,11 +40,6 @@ DISCONNECT_SUCCESS_STATUSES = {
     "sourceDisconnected",
 }
 STOP_NOTIFY_SUCCESS_STATUSES = {"not_registered"}
-
-SWITCHBOT_ADV_SERVICE_UUID = "0000fd3d-0000-1000-8000-00805f9b34fb"
-SWITCHBOT_COMMAND_SERVICE_UUID = "cba20d00-224d-11e6-9fb8-0002a5d5c51b"
-SWITCHBOT_WRITE_CHAR_UUID = "cba20002-224d-11e6-9fb8-0002a5d5c51b"
-SWITCHBOT_READ_CHAR_UUID = "cba20003-224d-11e6-9fb8-0002a5d5c51b"
 
 LOGGER = logging.getLogger(__name__)
 
@@ -630,15 +626,11 @@ def build_service_collection(
         )
         known_characteristic_uuids.add(characteristic_uuid)
 
-    if _should_add_switchbot_fallback(
-        advertisement_service_uuids or set(),
-        known_characteristic_uuids,
-    ):
-        next_handle = _add_switchbot_command_service(
-            services,
-            service_handles,
-            next_handle,
-        )
+    apply_gatt_overrides(
+        services,
+        advertised_service_uuids=advertisement_service_uuids or set(),
+        known_characteristic_uuids=known_characteristic_uuids,
+    )
 
     return services
 
@@ -677,71 +669,6 @@ def _is_resolved_characteristic(characteristic: Any) -> bool:
 def _is_local_fallback_characteristic(characteristic: Any) -> bool:
     obj = getattr(characteristic, "obj", None)
     return isinstance(obj, dict) and obj.get("source") == "aruba_ble_proxy"
-
-
-def _should_add_switchbot_fallback(
-    advertisement_service_uuids: set[str],
-    known_characteristic_uuids: set[str],
-) -> bool:
-    # Some Aruba firmware reports the SwitchBot advertisement service but does
-    # not provide the command characteristics during GATT discovery. Keep this
-    # fallback narrow: only synthesize the known SwitchBot command service for
-    # devices that advertise FD3D, and do not infer characteristics for other
-    # vendors or protocols.
-    return (
-        SWITCHBOT_ADV_SERVICE_UUID
-        in {_normalize_uuid(service_uuid) for service_uuid in advertisement_service_uuids}
-        and (
-            SWITCHBOT_READ_CHAR_UUID not in known_characteristic_uuids
-            or SWITCHBOT_WRITE_CHAR_UUID not in known_characteristic_uuids
-        )
-    )
-
-
-def _add_switchbot_command_service(
-    services: Any,
-    service_handles: dict[str, int],
-    next_handle: int,
-) -> int:
-    from bleak.backends.characteristic import BleakGATTCharacteristic
-    from bleak.backends.service import BleakGATTService
-
-    service_handle = service_handles.get(SWITCHBOT_COMMAND_SERVICE_UUID)
-    if service_handle is None:
-        service_handle = next_handle
-        next_handle += 1
-        service_handles[SWITCHBOT_COMMAND_SERVICE_UUID] = service_handle
-        services.add_service(
-            BleakGATTService(
-                obj={"source": "aruba_ble_proxy", "fallback": "switchbot"},
-                handle=service_handle,
-                uuid=SWITCHBOT_COMMAND_SERVICE_UUID,
-            )
-        )
-
-    service = services.get_service(SWITCHBOT_COMMAND_SERVICE_UUID)
-    if service is None:
-        return next_handle
-
-    for characteristic_uuid, properties in (
-        (SWITCHBOT_WRITE_CHAR_UUID, ["write-without-response"]),
-        (SWITCHBOT_READ_CHAR_UUID, ["notify", "read"]),
-    ):
-        if services.get_characteristic(characteristic_uuid) is not None:
-            continue
-        characteristic_handle = next_handle
-        next_handle += 1
-        services.add_characteristic(
-            BleakGATTCharacteristic(
-                obj={"source": "aruba_ble_proxy", "fallback": "switchbot"},
-                handle=characteristic_handle,
-                uuid=characteristic_uuid,
-                properties=properties,
-                max_write_without_response_size=lambda: 20,
-                service=service,
-            )
-        )
-    return next_handle
 
 
 def _ble_device_address(value: Any) -> str | None:

@@ -30,8 +30,9 @@ python3 -m pip install -e ".[dev]"
 ```
 
 The generated Aruba protobuf Python files are committed under
-`custom_components/aruba_ble_proxy/proto_generated`, so a fresh clone is enough
-for normal development, tests, and manual Home Assistant installation.
+`custom_components/aruba_ble_proxy/aruba_iot_ble/proto_generated`, so a fresh
+clone is enough for normal development, tests, and manual Home Assistant
+installation.
 
 Regenerate them only when Aruba's upstream `.proto` files need to be refreshed:
 
@@ -42,13 +43,13 @@ scripts/generate-aruba-protobuf.sh
 By default the script expects Aruba's
 [`aos8-iot-server-example-websocket`](https://github.com/aruba/aos8-iot-server-example-websocket)
 repository under `vendor/aos8-iot-server-example-websocket` and writes generated files into
-`custom_components/aruba_ble_proxy/proto_generated`.
+`custom_components/aruba_ble_proxy/aruba_iot_ble/proto_generated`.
 The `vendor/` directory is intentionally local-only and is not committed.
 You can override paths:
 
 ```bash
 ARUBA_PROTO_DIR=/path/to/proto_files/source \
-ARUBA_PROTO_OUT=custom_components/aruba_ble_proxy/proto_generated \
+ARUBA_PROTO_OUT=custom_components/aruba_ble_proxy/aruba_iot_ble/proto_generated \
 scripts/generate-aruba-protobuf.sh
 ```
 

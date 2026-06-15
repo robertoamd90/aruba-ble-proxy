@@ -61,7 +61,7 @@ async def async_setup_entry(hass, entry) -> bool:
         ),
     )
     await runtime.async_start(entry)
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+    entry.runtime_data = runtime
     if PLATFORMS:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -75,9 +75,10 @@ async def async_unload_entry(hass, entry) -> bool:
     unload_ok = True
     if PLATFORMS:
         unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    runtime: ArubaBleProxyRuntime | None = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+    runtime: ArubaBleProxyRuntime | None = getattr(entry, "runtime_data", None)
     if runtime is not None:
         await runtime.async_stop()
+    entry.runtime_data = None
     return unload_ok
 
 
@@ -286,7 +287,7 @@ def _gatt_notify_service_schema():
 
 def _runtime_for_ap(hass, ap_mac: str):
     normalized_ap = _normalize_mac(ap_mac) or ap_mac.upper()
-    for runtime in hass.data.get(DOMAIN, {}).values():
+    for runtime in _iter_runtimes(hass):
         connected_sources = runtime.diagnostic_attributes().get("receiver_connected_sources", [])
         normalized_sources = {
             _normalize_mac(source) or str(source).upper()
@@ -294,10 +295,25 @@ def _runtime_for_ap(hass, ap_mac: str):
         }
         if normalized_ap in normalized_sources:
             return runtime
-    runtimes = list(hass.data.get(DOMAIN, {}).values())
+    runtimes = list(_iter_runtimes(hass))
     if len(runtimes) == 1:
         return runtimes[0]
     raise ValueError(f"No Aruba BLE Proxy runtime is connected to AP {ap_mac}")
+
+
+def _iter_runtimes(hass):
+    config_entries = getattr(hass, "config_entries", None)
+    async_entries = getattr(config_entries, "async_entries", None) if config_entries else None
+    if async_entries is not None:
+        for entry in async_entries(DOMAIN):
+            runtime = getattr(entry, "runtime_data", None)
+            if runtime is not None:
+                yield runtime
+        return
+
+    domain_data = getattr(hass, "data", {}).get(DOMAIN, {})
+    if isinstance(domain_data, dict):
+        yield from domain_data.values()
 
 
 def _service_data_to_config(data) -> dict:
