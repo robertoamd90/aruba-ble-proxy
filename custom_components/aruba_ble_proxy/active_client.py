@@ -257,7 +257,7 @@ def create_aruba_bleak_client(runtime: Any, source: str):
                 characteristic_uuid=characteristic_uuid,
                 value=bytes(data),
                 with_response=response,
-                timeout=int(kwargs.get("timeout", 20)),
+                timeout=int(kwargs.get("timeout", self._timeout)),
                 wait_result=bool(response),
             )
             _raise_for_failed_action(action_response, BleakError)
@@ -280,8 +280,6 @@ def create_aruba_bleak_client(runtime: Any, source: str):
 
             def _notification_callback(update: ArubaCharacteristic) -> None:
                 value = bytearray(update.value)
-                if not value:
-                    return
                 result = dispatch(characteristic, value)
                 if inspect.isawaitable(result):
                     self._schedule_notify_callback(result)
@@ -292,7 +290,7 @@ def create_aruba_bleak_client(runtime: Any, source: str):
                 service_uuid=service_uuid,
                 characteristic_uuid=characteristic_uuid,
                 callback=_notification_callback,
-                timeout=int(kwargs.get("timeout", 20)),
+                timeout=int(kwargs.get("timeout", self._timeout)),
             )
             try:
                 _raise_for_failed_action(response, BleakError)
@@ -348,7 +346,7 @@ def create_aruba_bleak_client(runtime: Any, source: str):
                 service_uuid=service_uuid,
                 characteristic_uuid=characteristic_uuid,
                 callback=callback,
-                timeout=int(kwargs.get("timeout", 20)),
+                timeout=int(kwargs.get("timeout", self._timeout)),
             )
             _raise_for_failed_action(
                 response,
@@ -412,7 +410,9 @@ def create_aruba_bleak_client(runtime: Any, source: str):
             characteristic_uuid: str,
             callback: Any,
         ) -> None:
-            register_callback = getattr(self._runtime, "register_gatt_notify_callback")
+            register_callback = getattr(self._runtime, "register_gatt_notify_callback", None)
+            if register_callback is None:
+                return
             register_callback(
                 ap_mac=self._source,
                 device_mac=self.address,
@@ -686,7 +686,7 @@ def _normalize_mac(value: str | None) -> str | None:
     text = value.strip()
     if not text:
         return None
-    compact = text.replace(":", "").replace("-", "").replace(".", "")
+    compact = text.replace(":", "").replace("-", "").replace(".", "").replace(" ", "")
     if len(compact) == 12:
         try:
             int(compact, 16)
@@ -700,6 +700,7 @@ def _normalize_mac(value: str | None) -> str | None:
 
 def _normalize_uuid(value: str) -> str:
     text = str(value).strip().lower()
+    text = text.replace("{", "").replace("}", "")
     compact = text.replace("-", "")
     if len(compact) == 4:
         return f"0000{compact}-0000-1000-8000-00805f9b34fb"

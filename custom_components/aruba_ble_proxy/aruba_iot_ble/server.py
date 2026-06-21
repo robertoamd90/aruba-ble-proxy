@@ -219,7 +219,7 @@ def event_to_json(event: ArubaBleEvent) -> str:
                     uuid: data.hex()
                     for uuid, data in event.advertisement.service_data.items()
                 },
-                "payload": event.payload.hex(),
+                "payload": event.payload[:64].hex() + ("..." if len(event.payload) > 64 else ""),
             },
         },
         sort_keys=True,

@@ -2522,7 +2522,7 @@ def test_aruba_bleak_client_switchbot_notify_falls_back_if_aruba_rejects_charact
     asyncio.run(run_test())
 
 
-def test_aruba_bleak_client_ignores_empty_notification_values(monkeypatch):
+def test_aruba_bleak_client_forwards_empty_notification_values(monkeypatch):
     _install_fake_bleak_services(monkeypatch)
 
     class Runtime:
@@ -2576,7 +2576,7 @@ def test_aruba_bleak_client_ignores_empty_notification_values(monkeypatch):
         runtime.registered[-1]["callback"](SimpleNamespace(value=b""))
         runtime.registered[-1]["callback"](SimpleNamespace(value=b"\x0f"))
 
-        assert values == [b"\x0f"]
+        assert values == [b"", b"\x0f"]
 
     asyncio.run(run_test())
 

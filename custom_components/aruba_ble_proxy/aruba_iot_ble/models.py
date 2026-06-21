@@ -67,6 +67,7 @@ class BleAdvertisement:
     manufacturer_data: dict[int, bytes] = field(default_factory=dict)
     service_data: dict[str, bytes] = field(default_factory=dict)
     raw_ad_structures: tuple[tuple[int, bytes], ...] = ()
+    tx_power: int | None = None
 
 
 @dataclass(frozen=True)

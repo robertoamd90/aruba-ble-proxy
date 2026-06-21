@@ -12,6 +12,7 @@ LOCAL_NAME_AD_TYPES = {0x08, 0x09}
 SERVICE_DATA_16_AD_TYPE = 0x16
 SERVICE_DATA_32_AD_TYPE = 0x20
 SERVICE_DATA_128_AD_TYPE = 0x21
+TX_POWER_AD_TYPE = 0x0A
 MANUFACTURER_DATA_AD_TYPE = 0xFF
 
 
@@ -22,6 +23,7 @@ def parse_advertisement_data(payload: bytes) -> BleAdvertisement:
     extracts standard BLE AD fields so Home Assistant can decide what to do.
     """
     local_name: str | None = None
+    tx_power: int | None = None
     service_uuids: list[str] = []
     manufacturer_data: dict[int, bytes] = {}
     service_data: dict[str, bytes] = {}
@@ -32,6 +34,8 @@ def parse_advertisement_data(payload: bytes) -> BleAdvertisement:
 
         if ad_type in LOCAL_NAME_AD_TYPES:
             local_name = data.decode("utf-8", "replace")
+        elif ad_type == TX_POWER_AD_TYPE and len(data) >= 1:
+            tx_power = int.from_bytes(data[0:1], "little", signed=True)
         elif ad_type in UUID16_AD_TYPES:
             service_uuids.extend(_parse_uuid16_list(data))
         elif ad_type in UUID32_AD_TYPES:
@@ -50,6 +54,7 @@ def parse_advertisement_data(payload: bytes) -> BleAdvertisement:
 
     return BleAdvertisement(
         local_name=local_name,
+        tx_power=tx_power,
         service_uuids=tuple(dict.fromkeys(service_uuids)),
         manufacturer_data=manufacturer_data,
         service_data=service_data,

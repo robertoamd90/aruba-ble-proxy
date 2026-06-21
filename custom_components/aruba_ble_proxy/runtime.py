@@ -69,6 +69,7 @@ class RuntimeStats:
     active_action_timeouts: int = 0
     active_action_cancellations: int = 0
     active_action_orphan_results: int = 0
+    active_action_known_orphan_results: int = 0
     active_status_updates: int = 0
     active_disconnect_statuses: int = 0
     active_source_disconnects: int = 0
@@ -131,6 +132,7 @@ class RuntimeStats:
             "active_action_timeouts": self.active_action_timeouts,
             "active_action_cancellations": self.active_action_cancellations,
             "active_action_orphan_results": self.active_action_orphan_results,
+            "active_action_known_orphan_results": self.active_action_known_orphan_results,
             "active_status_updates": self.active_status_updates,
             "active_disconnect_statuses": self.active_disconnect_statuses,
             "active_source_disconnects": self.active_source_disconnects,
@@ -241,8 +243,10 @@ class ArubaBleProxyRuntime:
         self._register_scanner: Callable[..., Callable[[], None]] | None = None
         self._scanner_unsubs: dict[str, list[Callable[[], None]]] = {}
         self._remote_scanners: dict[str, Any] = {}
+        self._scanner_create_locks: dict[str, asyncio.Lock] = {}
         self._pending_actions: dict[str, asyncio.Future] = {}
         self._pending_action_contexts: dict[str, _PendingActionContext] = {}
+        self._cancelled_action_ids: set[str] = set()
         self._active_operation_slots: dict[tuple[str, str], _ActiveOperationSlot] = {}
         self._pending_characteristics: dict[
             tuple[str, str, str, str], list[asyncio.Future]
@@ -253,6 +257,7 @@ class ArubaBleProxyRuntime:
         self._last_characteristics: dict[
             tuple[str, str, str, str], ArubaCharacteristic
         ] = {}
+        self._max_last_characteristics: int = 4096
         self._device_advertised_service_uuids: dict[str, set[str]] = {}
         self._device_connection_statuses: dict[tuple[str, str], str] = {}
         self._device_mtu: dict[tuple[str, str], int] = {}
@@ -269,6 +274,8 @@ class ArubaBleProxyRuntime:
         self._last_passive_listener_update = 0.0
 
     async def async_start(self, entry: Any | None = None) -> None:
+        if self._task is not None and not self._task.done():
+            raise RuntimeError("Aruba BLE receiver is already running")
         from homeassistant.components import bluetooth
 
         self._entry_id = getattr(entry, "entry_id", None)
@@ -329,7 +336,8 @@ class ArubaBleProxyRuntime:
             for source_devices in self._active_device_keys_by_source.values()
             for key in source_devices
         )
-        for source, device_mac in active_keys:
+
+        async def _disconnect_one(source: str, device_mac: str) -> None:
             try:
                 await self._async_send_aruba_action_unlocked(
                     ap_mac=source,
@@ -347,8 +355,9 @@ class ArubaBleProxyRuntime:
                     source,
                 )
             self.stats.active_disconnect_statuses += 1
+            key = _device_key(source, device_mac)
             self._mark_device_disconnected(
-                (source, device_mac),
+                key,
                 ArubaStatusUpdate(
                     reporter=self._synthetic_reporter_for_source(source),
                     device_mac=device_mac,
@@ -358,6 +367,13 @@ class ArubaBleProxyRuntime:
                     mtu=None,
                 ),
             )
+
+        tasks = [
+            asyncio.create_task(_disconnect_one(source, device_mac))
+            for source, device_mac in active_keys
+        ]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def async_add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
         self._listeners.append(listener)
@@ -414,7 +430,11 @@ class ArubaBleProxyRuntime:
                     started_at=context.started_at,
                 )
             if future is None:
-                self.stats.active_action_orphan_results += 1
+                if result.action_id in self._cancelled_action_ids:
+                    self._cancelled_action_ids.discard(result.action_id)
+                    self.stats.active_action_known_orphan_results += 1
+                else:
+                    self.stats.active_action_orphan_results += 1
                 if _is_successful_action_result(result, context):
                     self._handle_successful_action_result(result, context)
                 else:
@@ -461,6 +481,8 @@ class ArubaBleProxyRuntime:
         self.stats.last_active_characteristic_value = characteristic.value.hex()
         futures = []
         if key is not None:
+            if len(self._last_characteristics) >= self._max_last_characteristics:
+                self._last_characteristics.pop(next(iter(self._last_characteristics)))
             self._last_characteristics[key] = characteristic
             futures = self._pending_characteristics.pop(key, [])
         for future in futures:
@@ -935,6 +957,7 @@ class ArubaBleProxyRuntime:
             if future is not None:
                 self._pending_actions.pop(request.action_id or "", None)
                 context = self._pending_action_contexts.pop(request.action_id or "", None)
+                self._cancelled_action_ids.add(request.action_id or "")
             self._record_active_action_duration(
                 action_type=request.action_type,
                 status="send_error",
@@ -970,6 +993,7 @@ class ArubaBleProxyRuntime:
         except asyncio.CancelledError:
             self._pending_actions.pop(request.action_id or "", None)
             context = self._pending_action_contexts.pop(request.action_id or "", None)
+            self._cancelled_action_ids.add(request.action_id or "")
             future.cancel()
             self._record_active_action_duration(
                 action_type=request.action_type,
@@ -984,6 +1008,7 @@ class ArubaBleProxyRuntime:
         except TimeoutError:
             self._pending_actions.pop(request.action_id or "", None)
             context = self._pending_action_contexts.pop(request.action_id or "", None)
+            self._cancelled_action_ids.add(request.action_id or "")
             self._record_active_action_duration(
                 action_type=request.action_type,
                 status="timeout_waiting_for_action_result",
@@ -1565,7 +1590,7 @@ class ArubaBleProxyRuntime:
                 yield
         finally:
             slot.users = max(0, slot.users - 1)
-            if slot.users == 0 and self._active_operation_slots.get(key) is slot:
+            if slot.users == 0:
                 self._active_operation_slots.pop(key, None)
 
     def _update_stats(self, event: ArubaBleEvent) -> None:
@@ -1742,7 +1767,11 @@ class ArubaBleProxyRuntime:
         try:
             scanner = self._remote_scanners.get(source)
             if scanner is None:
-                scanner = await self._async_create_remote_scanner(source)
+                lock = self._scanner_create_locks.setdefault(source, asyncio.Lock())
+                async with lock:
+                    scanner = self._remote_scanners.get(source)
+                    if scanner is None:
+                        scanner = await self._async_create_remote_scanner(source)
             scanner.async_on_payload(payload)
         except Exception as err:
             self.stats.bluetooth_forward_errors += 1
@@ -1895,13 +1924,16 @@ def _payload_to_ha_service_info(payload: BluetoothPayload) -> Any:
         return bluetooth.BluetoothServiceInfoBleak(**kwargs)
 
 
+_MISSING_SERVICE_UUID = "00000000-0000-0000-0000-000000000000"
+
+
 def _characteristic_key(
     source: str | None,
     device_mac: str | None,
     service_uuid: str | None,
     characteristic_uuid: str | None,
 ) -> tuple[str, str, str, str] | None:
-    if not source or not device_mac or not service_uuid or not characteristic_uuid:
+    if not source or not device_mac or not characteristic_uuid:
         return None
     normalized_source = _normalize_mac(source)
     normalized_device = _normalize_mac(device_mac)
@@ -1910,7 +1942,7 @@ def _characteristic_key(
     return (
         normalized_source,
         normalized_device,
-        _normalize_uuid(service_uuid),
+        _normalize_uuid(service_uuid) if service_uuid else _MISSING_SERVICE_UUID,
         _normalize_uuid(characteristic_uuid),
     )
 
@@ -1996,7 +2028,7 @@ def _normalize_mac(value: str | None) -> str | None:
     text = value.strip()
     if not text:
         return None
-    compact = text.replace(":", "").replace("-", "").replace(".", "")
+    compact = text.replace(":", "").replace("-", "").replace(".", "").replace(" ", "")
     if len(compact) == 12:
         try:
             int(compact, 16)
@@ -2010,6 +2042,7 @@ def _normalize_mac(value: str | None) -> str | None:
 
 def _normalize_uuid(value: str) -> str:
     text = str(value).strip().lower()
+    text = text.replace("{", "").replace("}", "")
     compact = text.replace("-", "")
     if len(compact) == 4:
         return f"0000{compact}-0000-1000-8000-00805f9b34fb"

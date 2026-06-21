@@ -130,26 +130,71 @@ def _build_remote_scanner(
     connector: Any,
     mode: Any,
 ):
+    import inspect
+
     common = {
         "connector": connector,
         "connectable": connector is not None,
         "requested_mode": mode,
         "current_mode": mode,
     }
+
     try:
+        sig = inspect.signature(scanner_cls.__init__)
+    except (TypeError, ValueError):
+        sig = None
+
+    has_scanner_id = (
+        sig is not None and "scanner_id" in sig.parameters
+    )
+    has_varkw = (
+        sig is not None
+        and any(
+            p.kind is inspect.Parameter.VAR_KEYWORD
+            for p in sig.parameters.values()
+        )
+    )
+
+    # If scanner_id is explicitly declared, use the new API.
+    if has_scanner_id:
         return scanner_cls(
             scanner_id=source,
             name=name,
             **common,
         )
-    except TypeError as err:
-        if "scanner_id" not in str(err) and "name" not in str(err):
-            raise
+
+    # **kwargs absorbs any keyword, so scanner_id always succeeds at
+    # argument-matching level.  No fallback needed — a TypeError here
+    # comes from the constructor body and should propagate.
+    if has_varkw:
         return scanner_cls(
-            source=source,
-            adapter=source,
+            scanner_id=source,
+            name=name,
             **common,
         )
+
+    # When inspect failed we cannot tell which API the class expects.
+    # Try the new API first and only fall back on argument-level errors.
+    if sig is None:
+        try:
+            return scanner_cls(
+                scanner_id=source,
+                name=name,
+                **common,
+            )
+        except TypeError:
+            return scanner_cls(
+                source=source,
+                adapter=source,
+                **common,
+            )
+
+    # No scanner_id, no **kwargs — the legacy API is the only match.
+    return scanner_cls(
+        source=source,
+        adapter=source,
+        **common,
+    )
 
 
 def _connections_in_progress(scanner: Any | None) -> int:

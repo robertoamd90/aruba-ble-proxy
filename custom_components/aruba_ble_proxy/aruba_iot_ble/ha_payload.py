@@ -39,7 +39,7 @@ def event_to_bluetooth_payload(event: ArubaBleEvent) -> BluetoothPayload:
         source=event.source.upper(),
         connectable=_is_connectable_frame(event.frame_type),
         time=monotonic(),
-        tx_power=None,
+        tx_power=advertisement.tx_power,
         raw=event.payload,
     )
 

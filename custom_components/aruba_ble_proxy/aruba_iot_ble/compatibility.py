@@ -190,14 +190,13 @@ def apply_gatt_overrides(
 
 
 def _normalize_uuid(value: str) -> str:
-    cleaned = value.strip().lower().replace("-", "")
+    from uuid import UUID
+
+    cleaned = value.strip().lower().replace("-", "").replace("{", "").replace("}", "")
     if len(cleaned) == 4:
         cleaned = f"0000{cleaned}00001000800000805f9b34fb"
     if len(cleaned) == 32:
-        return (
-            f"{cleaned[0:8]}-{cleaned[8:12]}-{cleaned[12:16]}-"
-            f"{cleaned[16:20]}-{cleaned[20:32]}"
-        )
+        return str(UUID(hex=cleaned))
     return value.strip().lower()
 
 

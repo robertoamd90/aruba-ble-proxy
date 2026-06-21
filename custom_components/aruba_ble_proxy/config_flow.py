@@ -14,6 +14,15 @@ from .aruba_cli import (
     render_aruba_config,
 )
 
+_uuid_cache: list[str] | None = None
+
+
+def _cached_uuid_list() -> list[str]:
+    global _uuid_cache
+    if _uuid_cache is None:
+        _uuid_cache = parse_uuid_file(default_uuid_seed_path())
+    return _uuid_cache
+
 from homeassistant import config_entries
 from homeassistant.core import callback
 
@@ -72,13 +81,21 @@ def _endpoint_url(data: dict[str, Any]) -> str:
         host = host.removeprefix("ws://")
     if host.startswith("wss://"):
         host = host.removeprefix("wss://")
-    if ":" not in host.rsplit("/", 1)[0]:
+    # Detect whether the host part already includes a port.
+    # Bracketed IPv6 like [::1] contains colons but no port; an IPv6
+    # with port looks like [::1]:7443 — the ] is followed by :.
+    host_part = host.split("/", 1)[0]
+    if host_part.startswith("[") and "]" in host_part:
+        has_port = host_part.rindex("]") < len(host_part) - 1
+    else:
+        has_port = ":" in host_part
+    if not has_port:
         host = f"{host}:{data[CONF_LISTEN_PORT]}"
     return f"{scheme}://{host}{path}"
 
 
 def _generate_cli(data: dict[str, Any]) -> str:
-    uuids = parse_uuid_file(default_uuid_seed_path())
+    uuids = _cached_uuid_list()
     return render_aruba_config(
         uuids=uuids,
         name_prefix=data[CONF_TRANSPORT_PREFIX],
@@ -89,7 +106,7 @@ def _generate_cli(data: dict[str, Any]) -> str:
 
 
 def _generate_cleanup_cli(data: dict[str, Any]) -> str:
-    uuids = parse_uuid_file(default_uuid_seed_path())
+    uuids = _cached_uuid_list()
     return render_aruba_cleanup_config(
         name_prefix=data[CONF_TRANSPORT_PREFIX],
         profile_count=len(chunked(uuids, 10)),
@@ -98,12 +115,12 @@ def _generate_cleanup_cli(data: dict[str, Any]) -> str:
 
 
 def _cli_profile_count() -> int:
-    uuids = parse_uuid_file(default_uuid_seed_path())
+    uuids = _cached_uuid_list()
     return len(chunked(uuids, 10))
 
 
 def _cli_filter_count() -> int:
-    return len(parse_uuid_file(default_uuid_seed_path()))
+    return len(_cached_uuid_list())
 
 
 def _build_cli_placeholders(data: dict[str, Any]) -> dict[str, str]:

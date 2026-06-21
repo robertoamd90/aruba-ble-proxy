@@ -235,14 +235,22 @@ def _cli_service_schema():
     )
 
 
+_MAC_REGEX = r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
+_UUID_REGEX = (
+    r"^[0-9A-Fa-f]{4}$|"
+    r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$|"
+    r"^[0-9A-Fa-f]{32}$"
+)
+
+
 def _ble_action_service_schema():
     import voluptuous as vol
     from homeassistant.helpers import config_validation as cv
 
     return vol.Schema(
         {
-            vol.Required("ap_mac"): cv.string,
-            vol.Required("device_mac"): cv.string,
+            vol.Required("ap_mac"): cv.matches_regex(_MAC_REGEX),
+            vol.Required("device_mac"): cv.matches_regex(_MAC_REGEX),
             vol.Optional("timeout", default=20): cv.positive_int,
             vol.Optional("wait_result", default=True): cv.boolean,
         }
@@ -254,10 +262,10 @@ def _gatt_action_service_schema(*, include_value: bool):
     from homeassistant.helpers import config_validation as cv
 
     schema = {
-        vol.Required("ap_mac"): cv.string,
-        vol.Required("device_mac"): cv.string,
-        vol.Required("service_uuid"): cv.string,
-        vol.Required("characteristic_uuid"): cv.string,
+        vol.Required("ap_mac"): cv.matches_regex(_MAC_REGEX),
+        vol.Required("device_mac"): cv.matches_regex(_MAC_REGEX),
+        vol.Required("service_uuid"): cv.matches_regex(_UUID_REGEX),
+        vol.Required("characteristic_uuid"): cv.matches_regex(_UUID_REGEX),
         vol.Optional("timeout", default=20): cv.positive_int,
         vol.Optional("wait_result", default=True): cv.boolean,
     }
@@ -273,10 +281,10 @@ def _gatt_notify_service_schema():
 
     return vol.Schema(
         {
-            vol.Required("ap_mac"): cv.string,
-            vol.Required("device_mac"): cv.string,
-            vol.Required("service_uuid"): cv.string,
-            vol.Required("characteristic_uuid"): cv.string,
+            vol.Required("ap_mac"): cv.matches_regex(_MAC_REGEX),
+            vol.Required("device_mac"): cv.matches_regex(_MAC_REGEX),
+            vol.Required("service_uuid"): cv.matches_regex(_UUID_REGEX),
+            vol.Required("characteristic_uuid"): cv.matches_regex(_UUID_REGEX),
             vol.Optional("enable", default=True): cv.boolean,
             vol.Optional("indicate", default=False): cv.boolean,
             vol.Optional("timeout", default=20): cv.positive_int,
@@ -392,7 +400,7 @@ def _normalize_mac(value: str | None) -> str | None:
     text = value.strip()
     if not text:
         return None
-    compact = text.replace(":", "").replace("-", "").replace(".", "")
+    compact = text.replace(":", "").replace("-", "").replace(".", "").replace(" ", "")
     if len(compact) == 12:
         try:
             int(compact, 16)
