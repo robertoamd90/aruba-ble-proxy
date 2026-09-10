@@ -2,6 +2,11 @@
 
 This document collects community-reported hardware and firmware combinations tested with Aruba BLE Proxy.
 
+These are per-combination reports, not a complete list of supported hardware.
+Active GATT has also been exercised in maintainer field testing, but those results
+have not yet been recorded here with a complete model/firmware/device combination.
+The entries below retain their original reported scope.
+
 | Device | Firmware / Platform | Deployment Mode | Passive BLE | Active BLE / GATT | Tested By | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | Aruba AP-505 | Aruba Instant 8.12.0.3_91078 | Instant | Confirmed in Home Assistant Bluetooth dashboard | Not tested | Community report | BLE advertisements visible in Home Assistant. |

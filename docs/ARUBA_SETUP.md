@@ -2,6 +2,11 @@
 
 These notes document the first working Aruba configuration tested against the standalone receiver.
 
+This is a historical experiment log, not the current installation guide. Use the
+[README](../README.md#configure-aruba) and generated integration configuration for
+normal setup. The paths, endpoint and authentication observations below describe
+the early test environment.
+
 ## Receiver
 
 Run the local receiver:

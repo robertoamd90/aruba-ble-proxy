@@ -1,193 +1,100 @@
 # Aruba BLE Proxy
 
-Home Assistant integration to use Aruba access points as Bluetooth Low Energy
-scanner sources, with passive advertisement forwarding and an active BLE/GATT
-connector.
+Use your Aruba access points as Bluetooth Low Energy proxies for Home Assistant. Forward supported BLE advertisements and use active GATT connections through your existing APs.
 
-This is not a device decoder and does not publish MQTT state. The intended direction is:
+![Aruba BLE Proxy icon](custom_components/aruba_ble_proxy/brand/icon.png)
 
 ```text
-Aruba AP -> WebSocket/protobuf -> Home Assistant Bluetooth stack
+Aruba AP → WebSocket → Home Assistant Bluetooth → device integrations
 ```
 
-Current phase: 1.0. Passive BLE forwarding and active BLE/GATT are supported
-within the limits documented below.
+## Requirements and compatibility
 
-This project is not affiliated with, endorsed by, or sponsored by HPE Aruba
-Networking. The included integration icon/logo assets are original project
-artwork and do not use Aruba trademarks or logos.
-Home Assistant 2026.3 and newer can load these local brand assets from the
-integration's `brand/` directory.
+- Home Assistant with the Bluetooth integration available.
+- An Aruba AP and firmware supporting IoT BLE scanning and Telemetry WebSocket transport. See the [hardware compatibility table](docs/HARDWARE_COMPATIBILITY.md) for reported combinations.
+- Network connectivity from the APs to Home Assistant on the configured listener port (default `7443`). This is separate from the Home Assistant web interface.
+- For BLE device discovery, an advertiser matching the Aruba transport filters and a Home Assistant integration supporting that device.
 
-See [SPEC.md](SPEC.md) for scope and architecture.
+The listener uses plain `ws://`. Keep it on a trusted network and restrict access to the APs. Generated setup commands target Aruba Instant; controller-managed deployments may need configuration adjustments.
 
-## Development
+## Install with HACS
 
-Install dependencies:
+Add this project as a **custom repository** in [HACS](https://www.hacs.xyz/docs/faq/custom_repositories/):
+
+1. Open HACS, then the three-dot menu → **Custom repositories**.
+2. Enter `https://github.com/robertoamd90/aruba-ble-proxy` and select **Integration**.
+3. Add the repository, find **Aruba BLE Proxy**, and download the latest stable release.
+4. Restart Home Assistant.
+5. Open **Settings → Devices & services → Add integration → Aruba BLE Proxy**.
+
+Custom repository installation does not require inclusion in the HACS default catalog. HACS manages installation and updates; you still configure the Aruba APs below.
+
+Already installed manually? Back up your integration directory, add this repository to HACS, and download the release. Keep your existing Home Assistant integration entries and restart; you do not need to delete or recreate them. Downloads may overwrite local changes inside the integration directory.
+
+For installation without HACS, see [manual installation](docs/INSTALL_MANUAL.md). No standalone receiver, development environment or protobuf compilation is required for normal Home Assistant use.
+
+## Configure Aruba
+
+1. In integration setup, enter the Home Assistant LAN address reachable from your APs. Keep port `7443` and path `/aruba-ble-proxy` unless you need different values.
+2. Leave the access token empty to generate one, or provide your own.
+3. Copy the generated Aruba CLI configuration and apply it using the Aruba CLI.
+4. Confirm that the IoT transport profiles connect to the Home Assistant endpoint.
+
+The integration generates a BLE scanning radio profile and transport profiles with service UUID filters, split into groups of at most 10 UUIDs. Setup/options also provide cleanup commands. Review generated commands before applying them to a deployment with existing IoT profiles.
+
+## What to expect
+
+- Each AP appears as a Bluetooth scanner named `Aruba AP <MAC>` after its first telemetry message containing the AP MAC, even without matching BLE advertisements. On firmware sending periodic AP health messages, allow roughly two minutes after connection; timing depends on the AP.
+- Previously configured scanners are restored when the integration starts. Their presence alone does not prove the AP is currently connected or forwarding advertisements.
+- The first BLE advertisement remains another registration trigger, using the same identity without creating a second scanner.
+- The hardware model uses Aruba's `hwType` when available, otherwise `Aruba AP`. A model learned after registration is saved and may need another restart to appear.
+- Device integrations receive matching advertisements through Home Assistant Bluetooth. Active BLE supports connect/disconnect, GATT read/write and notifications, with configurable connection slots per AP.
+
+Multiple APs can share a cluster WebSocket connection. Each retains its own scanner identity and active connection routing.
+
+## Troubleshooting
+
+**AP connected, but no BLE devices?** Aruba filters determine which advertisements are forwarded. A connected scanner can legitimately have `events: 0`. Test with a matching advertiser, such as a BTHome device (`FCD2`); a phone beacon does not necessarily match the generated filters.
+
+**AP does not appear?** Check the endpoint address, port, path, token and firewall, then download integration diagnostics from **Settings → Devices & services → Aruba BLE Proxy**. Compare `receiver_connected_sources`, `receiver_binary_messages`, `registered_scanners`, `events` and `bluetooth_forwards`. An established WebSocket alone is not sufficient for first registration.
+
+**Active BLE fails?** Check Home Assistant logs and the device's GATT support. Include AP model, firmware, Home Assistant version, integration version and whether passive advertisements work when [reporting an issue](https://github.com/robertoamd90/aruba-ble-proxy/issues). Remove tokens and private data from logs before sharing.
+
+## Limits
+
+- Aruba filtering means this is not a universal catch-all proxy for every nearby BLE advertisement.
+- Pairing/bonding, descriptor read/write and unpairing are not implemented.
+- Aruba may return incomplete GATT discovery. A narrow SwitchBot `FD3D` command-service fallback is included; it is not a general repair for device protocols.
+- Device decoding belongs to Home Assistant's device integrations. This project does not publish MQTT state.
+
+See the [field-test checklist](docs/HA_FIELD_TEST_RUNBOOK.md), [active BLE technical notes](docs/ACTIVE_BLE_FEASIBILITY.md) and [release notes](https://github.com/robertoamd90/aruba-ble-proxy/releases).
+
+## Development and standalone tools
+
+Clone the repository, create a Python virtual environment, and install development dependencies:
 
 ```bash
-python3 -m pip install -e ".[dev]"
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+python -m pytest -q
 ```
 
-The generated Aruba protobuf Python files are committed under
-`custom_components/aruba_ble_proxy/aruba_iot_ble/proto_generated`, so a fresh
-clone is enough for normal development, tests, and manual Home Assistant
-installation.
-
-Regenerate them only when Aruba's upstream `.proto` files need to be refreshed:
+The standalone receiver is installed by that command. It logs decoded traffic; it does not forward advertisements into Home Assistant. Stop the integration first if using the same port:
 
 ```bash
-scripts/generate-aruba-protobuf.sh
+aruba-ble-proxy-receiver --host 0.0.0.0 --port 7443 --access-token "your-token" --log-level debug
 ```
 
-By default the script expects Aruba's
-[`aos8-iot-server-example-websocket`](https://github.com/aruba/aos8-iot-server-example-websocket)
-repository under `vendor/aos8-iot-server-example-websocket` and writes generated files into
-`custom_components/aruba_ble_proxy/aruba_iot_ble/proto_generated`.
-The `vendor/` directory is intentionally local-only and is not committed.
-You can override paths:
+Use `--summary` for compact BLE output. CLI equivalents of configuration and cleanup are available:
 
 ```bash
-ARUBA_PROTO_DIR=/path/to/proto_files/source \
-ARUBA_PROTO_OUT=custom_components/aruba_ble_proxy/aruba_iot_ble/proto_generated \
-scripts/generate-aruba-protobuf.sh
-```
-
-Run the standalone receiver for local protocol/debug testing:
-
-```bash
-aruba-ble-proxy-receiver --host 0.0.0.0 --port 7443 --log-level info
-```
-
-The standalone receiver accepts Aruba WebSocket connections, decodes BLE Data
-protobuf messages, and logs normalized advertisements. It does not forward
-advertisements into Home Assistant; that path is implemented by the custom
-integration running inside Home Assistant.
-
-For field testing, compact BLE summaries are easier to read:
-
-```bash
-aruba-ble-proxy-receiver --host 0.0.0.0 --port 7443 --log-level info --summary
-```
-
-If an Aruba access token is configured:
-
-```bash
-aruba-ble-proxy-receiver --access-token "secret"
-```
-
-The receiver accepts only the configured endpoint path (default
-`/aruba-ble-proxy`), bounds WebSocket messages and concurrent connections, and
-closes clients that repeatedly send invalid telemetry. The transport is still
-plain `ws://`; expose port `7443` only to trusted Aruba AP networks or protect it
-with equivalent firewall/VLAN controls.
-
-The CLI also reads environment variables:
-
-```bash
-ARUBA_BLE_PROXY_HOST=0.0.0.0
-ARUBA_BLE_PROXY_PORT=7443
-ARUBA_BLE_PROXY_ACCESS_TOKEN=secret
-ARUBA_BLE_PROXY_LOG_LEVEL=info
-ARUBA_BLE_PROXY_SUMMARY=true
-```
-
-Command line flags override environment variables.
-
-## Aruba CLI filter generation
-
-Aruba Instant accepted at most 10 `serviceUUIDFilter` values per transport profile in local testing.
-The generator emits a complete Aruba Instant CLI block:
-
-- one BLE scanning IoT radio profile
-- multiple BLE Data transport profiles
-- one `serviceUUIDFilter` chunk per transport profile, with at most 10 UUIDs per chunk
-
-Generate the CLI block:
-
-```bash
-aruba-ble-proxy-generate-aruba-cli \
-  --endpoint-url ws://192.0.2.10:7443/test \
-  --token example-access-token
-```
-
-Write it to a file instead of stdout:
-
-```bash
-aruba-ble-proxy-generate-aruba-cli \
-  --endpoint-url ws://192.0.2.10:7443/test \
-  --token example-access-token \
-  --output aruba-ha-ble-config.txt
-```
-
-The default seed file is `custom_components/aruba_ble_proxy/data/ha_service_uuids_seed.txt`.
-This is a practical compatibility list, not a universal BLE catch-all.
-
-Generate cleanup commands for the same generated profiles:
-
-```bash
+aruba-ble-proxy-generate-aruba-cli --endpoint-url ws://192.0.2.10:7443/aruba-ble-proxy --token "your-token"
 aruba-ble-proxy-generate-aruba-cli --cleanup
 ```
 
-## Home Assistant custom integration
+Generated protobuf modules are committed inside the integration. Only developers updating Aruba's protocol definitions need `scripts/generate-aruba-protobuf.sh`; it reads sources from `vendor/aos8-iot-server-example-websocket` by default, with `ARUBA_PROTO_DIR` and `ARUBA_PROTO_OUT` overrides. See [SPEC.md](SPEC.md) for architecture and [historical Aruba setup observations](docs/ARUBA_SETUP.md) for early transport experiments.
 
-The initial custom integration lives under:
+## License and affiliation
 
-```text
-custom_components/aruba_ble_proxy
-```
-
-Implemented:
-
-- config flow with endpoint, token, and Aruba profile settings
-- generated Aruba CLI block during setup and options flow
-- `aruba_ble_proxy.generate_cli` service with response data
-- WebSocket receiver lifecycle inside Home Assistant
-- Aruba BLE advertisements converted to `BluetoothServiceInfoBleak`
-- Aruba APs registered as active-scan Home Assistant Bluetooth sources, matching Aruba's background scan and scan-response forwarding
-- Aruba clusters may multiplex several AP scanner sources over one WebSocket; southbound actions remain routed by AP source
-- forwarding into Home Assistant Bluetooth via `async_get_advertisement_callback`
-- no recorder-backed diagnostic sensors; validation is done through Home Assistant Bluetooth sources and logs
-- connectable Home Assistant Bluetooth scanner support for active BLE/GATT
-- Aruba BLE action path for connect, disconnect, GATT read/write, and notifications
-- active BLE connection slots per AP are configurable
-- active GATT reads, characteristic discovery, and notifications are scoped by Aruba AP source
-- narrow SwitchBot command service fallback when a device advertises SwitchBot service UUID `FD3D`
-- passive BLE validated with BTHome and SwitchBot thermometer advertisements
-- active BLE/GATT validated in long-running Home Assistant field use
-
-Validated in a real Home Assistant setup:
-
-- Aruba AP connects to the integration over WebSocket
-- Aruba BLE Data advertisements are forwarded into Home Assistant Bluetooth
-- BTHome events continue working with ESPHome BLE proxy and host Bluetooth disabled
-- SwitchBot thermometer advertisements work through the passive path
-- active BLE/GATT runs through Aruba AP sources without host Bluetooth or ESPHome BLE proxy
-
-Known limits:
-
-- BLE pairing, bonding, descriptor read/write, and unpairing are not implemented.
-- The proxy does not decode or repair application protocols such as BTHome,
-  Xiaomi, Shelly, or SwitchBot payloads.
-- Aruba may not report a complete GATT characteristic discovery for every
-  device. The only compatibility fallback in core is the narrow SwitchBot
-  command-service fallback for devices advertising `FD3D`.
-- Aruba BLE forwarding depends on Aruba IoT transport/profile filtering; this
-  project is not a universal catch-all for every nearby BLE frame.
-
-Active BLE notes are tracked in
-[docs/ACTIVE_BLE_FEASIBILITY.md](docs/ACTIVE_BLE_FEASIBILITY.md). The Home
-Assistant field-test checklist is in
-[docs/HA_FIELD_TEST_RUNBOOK.md](docs/HA_FIELD_TEST_RUNBOOK.md).
-
-Manual install instructions are in [docs/INSTALL_MANUAL.md](docs/INSTALL_MANUAL.md). The install
-requires copying only `custom_components/aruba_ble_proxy`.
-
-## Hardware Compatibility
-
-Community-tested hardware and firmware combinations are tracked in
-[docs/HARDWARE_COMPATIBILITY.md](docs/HARDWARE_COMPATIBILITY.md).
-
-## License
-
-This project is licensed under the **GNU General Public License v3.0**. See [LICENSE](LICENSE).
+Licensed under [GNU GPL v3.0](LICENSE). This project is not affiliated with, endorsed by, or sponsored by HPE Aruba Networking. Integration artwork is original; Home Assistant 2026.3 and newer supports the bundled local brand assets.

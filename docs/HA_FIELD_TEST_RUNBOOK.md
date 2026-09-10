@@ -1,6 +1,6 @@
 # Home Assistant Field Test Runbook
 
-This runbook is for testing version `1.0.0` on a real Home Assistant
+This runbook is for testing a release candidate on a real Home Assistant
 instance with a real Aruba AP.
 
 Do not change active BLE code while running this checklist unless a test exposes
@@ -21,6 +21,7 @@ The field test must answer three questions:
 Record these values:
 
 - Home Assistant version:
+- Aruba BLE Proxy version and commit/tag:
 - Aruba AP model:
 - Aruba Instant / AOS version:
 - Aruba AP MAC:
@@ -36,7 +37,8 @@ active BLE is being tested.
 
 ## Install Candidate
 
-Manual install target:
+Install through the [HACS instructions](../README.md#install-with-hacs), or use
+the manual install target:
 
 ```text
 /config/custom_components/aruba_ble_proxy
@@ -53,7 +55,7 @@ Then restart Home Assistant.
 Expected result after restart:
 
 - Integration loads without a setup error.
-- Version shown in Home Assistant is `1.0.0`.
+- Version shown in Home Assistant matches the candidate being tested.
 - The integration exposes Aruba APs as Bluetooth scanner sources.
 - No Aruba BLE Proxy diagnostic sensors are created.
 
@@ -116,7 +118,11 @@ Pass criteria:
 
 - Bluetooth graph shows Aruba AP source nodes connected to observed BLE devices.
 - No startup warning says Home Assistant is blocked by the Aruba receiver task.
-- `Receiver last peer` shows the Aruba AP connection, not `unknown`.
+- Integration diagnostics list the AP MAC in `receiver_connected_sources`.
+- Persisted scanners return after restart without waiting for advertisements.
+- For an AP without matching advertisers, an identifying telemetry message creates
+  its scanner even with `events: 0`. Record this separately if it cannot be tested.
+- Subsequent BLE traffic reuses that scanner without duplicates.
 
 Fail evidence to collect:
 
@@ -217,7 +223,7 @@ Fail evidence to collect:
 
 - Home Assistant log lines containing `switchbot`, `bleak`, `bluetooth`, and
   `aruba_ble_proxy`.
-- Aruba BLE Proxy diagnostic entity values after the failure.
+- Downloaded Aruba BLE Proxy diagnostics after the failure.
 - Whether the failure is discovery, connect, notify, write, read, or disconnect.
 
 ## Stop And Report Conditions
@@ -236,7 +242,7 @@ Use [FIELD_TEST_REPORT_TEMPLATE.md](FIELD_TEST_REPORT_TEMPLATE.md) after
 testing. Minimal summary:
 
 ```text
-Version: 1.0.0
+Version/commit:
 HA version:
 Aruba model/version:
 AP MAC:

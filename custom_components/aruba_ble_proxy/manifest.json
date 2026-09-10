@@ -2,14 +2,15 @@
   "domain": "aruba_ble_proxy",
   "name": "Aruba BLE Proxy",
   "bluetooth": [],
-  "codeowners": ["robertoamd90"],
+  "codeowners": ["@robertoamd90"],
   "config_flow": true,
   "after_dependencies": ["bluetooth_adapters"],
   "dependencies": ["bluetooth"],
   "documentation": "https://github.com/robertoamd90/aruba-ble-proxy",
+  "issue_tracker": "https://github.com/robertoamd90/aruba-ble-proxy/issues",
   "integration_type": "hub",
   "iot_class": "local_push",
   "loggers": ["aruba_iot_ble", "custom_components.aruba_ble_proxy"],
   "requirements": ["protobuf>=6.31.1,<8", "websockets>=13"],
-  "version": "1.2.0"
+  "version": "1.2.1"
 }

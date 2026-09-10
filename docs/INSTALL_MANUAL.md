@@ -1,6 +1,9 @@
 # Manual Home Assistant Install
 
-This is the current development install path before HACS packaging exists.
+Use this method if you prefer to install without HACS. For HACS custom repository
+installation, follow the [README](../README.md#install-with-hacs).
+Download the source archive of the desired [stable release](https://github.com/robertoamd90/aruba-ble-proxy/releases)
+and extract it first.
 
 ## Files to copy
 
@@ -88,7 +91,10 @@ Known limits:
 - generic repair of incomplete Aruba GATT discovery
 - application-level decoding or repair of vendor payloads
 
-## Current limitation
+## Updates
 
-This integration is not yet packaged for HACS. Manual install currently means copying
-`custom_components/aruba_ble_proxy` into Home Assistant and restarting.
+Back up the existing integration directory, replace it with the complete
+`custom_components/aruba_ble_proxy` directory from the new release, then restart
+Home Assistant. Avoid an extra nested `aruba_ble_proxy` directory. Keep existing
+integration entries; ordinary updates do not require recreating them or reapplying
+Aruba profiles. Follow release notes for any exceptions.
