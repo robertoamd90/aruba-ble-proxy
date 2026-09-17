@@ -13,6 +13,7 @@ The entries below retain their original reported scope.
 | Aruba AP-535 | Aruba Instant 8.12.0.3_91078 | Instant | Confirmed in Home Assistant Bluetooth dashboard | Not tested | Community report | BLE advertisements visible in Home Assistant. |
 | Aruba AP-515 | ArubaOS 8.12 | Mobility Gateway | Reported, not yet confirmed | Not tested | Community report | User reported AP-515 with AOS 8.12 and a Mobility Gateway. |
 | Aruba AP-365 | Unknown | Unknown | Reported working | Not tested | Community report | Firmware and deployment mode still need confirmation. |
+| Aruba AP-345 | Aruba Instant 8.10.0.21_94501 LSR | Instant | Confirmed with live sensor data | Not tested | Community report | 5 APs tested; passive BLE visible in Home Assistant and used with Bermuda BLE Trilateration. Custom filtering not yet tested. |
 
 ## Reporting new results
 
