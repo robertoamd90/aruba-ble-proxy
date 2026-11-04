@@ -2247,7 +2247,7 @@ def _payload_to_ha_service_info(payload: BluetoothPayload) -> Any:
     )
     device = BLEDevice(payload.address, payload.name, details={}, rssi=payload.rssi)
     kwargs = {
-        "name": payload.name,
+        "name": payload.name or payload.address,
         "address": payload.address,
         "rssi": payload.rssi,
         "manufacturer_data": payload.manufacturer_data,

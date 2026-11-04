@@ -1,7 +1,9 @@
 import sys
 import types
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
+
+import pytest
 
 from custom_components.aruba_ble_proxy.ha_payload import BluetoothPayload
 from custom_components.aruba_ble_proxy.scanner import ArubaBleRemoteScanner
@@ -48,6 +50,89 @@ def _install_fake_bluetooth(monkeypatch, scanner_base):
     monkeypatch.setitem(sys.modules, "homeassistant", homeassistant)
     monkeypatch.setitem(sys.modules, "homeassistant.components", components)
     monkeypatch.setitem(sys.modules, "homeassistant.components.bluetooth", bluetooth)
+
+
+def test_remote_scanner_prefers_raw_advertisement_over_parsed_callbacks(monkeypatch):
+    class RawScanner:
+        def __init__(self, **kwargs):
+            self.connectable = kwargs["connectable"]
+            self.name = kwargs["name"]
+            self.details = _Details()
+            self.calls = []
+
+        def _async_on_raw_advertisement(self, address, rssi, raw, details, timestamp):
+            self.calls.append((address, rssi, raw, details, timestamp))
+
+        def _async_on_advertisement_internal(self, *args):
+            pytest.fail("Parsed internal callback must not receive raw advertisements")
+
+        def _async_on_advertisement(self, *args):
+            pytest.fail("Parsed callback must not receive raw advertisements")
+
+    _install_fake_bluetooth(monkeypatch, RawScanner)
+    scanner = ArubaBleRemoteScanner("02:00:00:00:00:01")
+    payload = _payload()
+    scanner.async_on_payload(payload)
+
+    assert scanner.scanner.calls == [
+        (payload.address, payload.rssi, payload.raw, {}, payload.time)
+    ]
+
+
+@pytest.mark.parametrize("raw_available", [False, True])
+def test_remote_scanner_falls_back_when_raw_is_missing_or_unsupported(
+    monkeypatch, raw_available
+):
+    class Scanner:
+        _async_on_raw_advertisement = None
+
+        def __init__(self, **kwargs):
+            self.connectable = kwargs["connectable"]
+            self.name = kwargs["name"]
+            self.details = _Details()
+            self.calls = []
+
+        def _async_on_advertisement(self, *args):
+            self.calls.append(args)
+
+    if raw_available:
+        def on_raw(self, *args):
+            pytest.fail("Raw callback must not receive an empty payload")
+
+        Scanner._async_on_raw_advertisement = on_raw
+
+    _install_fake_bluetooth(monkeypatch, Scanner)
+    scanner = ArubaBleRemoteScanner("02:00:00:00:00:01")
+    payload = replace(_payload(), name=None, raw=b"") if raw_available else _payload()
+    scanner.async_on_payload(payload)
+
+    assert len(scanner.scanner.calls) == 1
+    args = scanner.scanner.calls[0]
+    assert args[0] == payload.address
+    assert args[2] == payload.name
+    assert args[3:6] == (
+        payload.service_uuids, payload.service_data, payload.manufacturer_data
+    )
+
+
+def test_remote_scanner_does_not_retry_parsed_callback_after_raw_failure(monkeypatch):
+    class Scanner:
+        def __init__(self, **kwargs):
+            self.connectable = kwargs["connectable"]
+            self.name = kwargs["name"]
+            self.details = _Details()
+
+        def _async_on_raw_advertisement(self, *args):
+            raise TypeError("raw callback failed")
+
+        def _async_on_advertisement(self, *args):
+            pytest.fail("A raw processing failure must not trigger a second delivery")
+
+    _install_fake_bluetooth(monkeypatch, Scanner)
+    scanner = ArubaBleRemoteScanner("02:00:00:00:00:01")
+
+    with pytest.raises(TypeError, match="raw callback failed"):
+        scanner.async_on_payload(_payload())
 
 
 def test_remote_scanner_forwards_payload_to_legacy_internal_method(monkeypatch):
