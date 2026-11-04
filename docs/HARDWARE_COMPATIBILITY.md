@@ -15,6 +15,7 @@ The entries below retain their original reported scope.
 | Aruba AP-515 | Aruba Instant 8.13.3.0_96306 LSR | Instant | Confirmed | Confirmed with SwitchBot Lock Pro | Maintainer field test | Home Assistant uses only Aruba APs for Bluetooth; lock/unlock control confirms an active BLE connection path. |
 | Aruba AP-365 | Unknown | Unknown | Reported working | Not tested | [Reddit comment](https://www.reddit.com/r/homeassistant/comments/1tsnc33/comment/op2nfo2/) | Firmware and deployment mode still need confirmation. |
 | Aruba AP-345 | Aruba Instant 8.10.0.21_94501 LSR | Instant | Confirmed with live sensor data | Not tested | [GitHub issue #9](https://github.com/robertoamd90/aruba-ble-proxy/issues/9) | 5 APs tested; passive BLE visible in Home Assistant and used with Bermuda BLE Trilateration. Custom filtering not yet tested. |
+| Aruba AP-635 | Aruba Instant 8.13.3.1 LSR | Instant | Confirmed in Home Assistant | Confirmed with Govee BLE (two-way updates) | [GitHub issue #13](https://github.com/robertoamd90/aruba-ble-proxy/issues/13) | Tested with [ha-govee-led-ble](https://github.com/teh-hippo/ha-govee-led-ble) in single-connect and held-connection modes; added Govee company filters `8803`, `8843`. |
 
 ## Reporting new results
 
