@@ -80,8 +80,9 @@ def test_remote_scanner_prefers_raw_advertisement_over_parsed_callbacks(monkeypa
 
 
 @pytest.mark.parametrize("raw_available", [False, True])
+@pytest.mark.parametrize("raw", [None, b""])
 def test_remote_scanner_falls_back_when_raw_is_missing_or_unsupported(
-    monkeypatch, raw_available
+    monkeypatch, raw_available, raw
 ):
     class Scanner:
         _async_on_raw_advertisement = None
@@ -103,7 +104,7 @@ def test_remote_scanner_falls_back_when_raw_is_missing_or_unsupported(
 
     _install_fake_bluetooth(monkeypatch, Scanner)
     scanner = ArubaBleRemoteScanner("02:00:00:00:00:01")
-    payload = replace(_payload(), name=None, raw=b"") if raw_available else _payload()
+    payload = replace(_payload(), name=None, raw=raw) if raw_available else _payload()
     scanner.async_on_payload(payload)
 
     assert len(scanner.scanner.calls) == 1
@@ -411,3 +412,26 @@ def test_remote_scanner_falls_back_to_legacy_constructor(monkeypatch):
     assert scanner.scanner.adapter == "02:00:00:00:00:01"
     assert scanner.scanner.name == "Aruba AP 02:00:00:00:00:01"
     assert scanner.scanner.details.name == "Aruba AP 02:00:00:00:00:01"
+
+
+@pytest.mark.parametrize("method_name", ["_async_on_advertisement_internal", "_async_on_advertisement"])
+def test_legacy_callbacks_receive_absent_name_without_address_substitution(monkeypatch, method_name):
+    class Scanner:
+        def __init__(self, **kwargs):
+            self.connectable = kwargs["connectable"]
+            self.details = _Details()
+            self.calls = []
+
+    def on_advertisement(self, *args):
+        self.calls.append(args)
+
+    setattr(Scanner, method_name, on_advertisement)
+    _install_fake_bluetooth(monkeypatch, Scanner)
+    scanner = ArubaBleRemoteScanner("02:00:00:00:00:01")
+    scanner.async_on_payload(replace(_payload(), name=None))
+    assert len(scanner.scanner.calls) == 1
+    args = scanner.scanner.calls[0]
+    assert args[2] is None
+    assert args[3:7] == (_payload().service_uuids, _payload().service_data,
+                         _payload().manufacturer_data, _payload().tx_power)
+    assert len(args) == (10 if method_name.endswith("internal") else 9)

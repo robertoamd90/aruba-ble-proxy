@@ -1181,8 +1181,12 @@ def test_runtime_uses_pending_context_for_incomplete_success_result():
     asyncio.run(run_test())
 
 
-def test_runtime_gatt_read_waits_for_characteristic_value():
+@pytest.mark.parametrize("raw_callback_fails", [False, True])
+def test_runtime_gatt_read_waits_for_characteristic_value(raw_callback_fails):
     async def run_test():
+        from types import SimpleNamespace
+        from custom_components.aruba_ble_proxy.scanner import ArubaBleRemoteScanner
+
         class Hass:
             pass
 
@@ -1217,6 +1221,26 @@ def test_runtime_gatt_read_waits_for_characteristic_value():
         )
         runtime._receiver = Receiver()
 
+        deliveries = []
+
+        def on_raw(*args):
+            deliveries.append(args)
+            if raw_callback_fails:
+                raise ValueError("raw consumer failed during GATT read")
+
+        scanner = object.__new__(ArubaBleRemoteScanner)
+        scanner._scanner = SimpleNamespace(_async_on_raw_advertisement=on_raw)
+
+        async def ensure(source, **kwargs):
+            return scanner
+
+        runtime._async_ensure_remote_scanner = ensure
+        runtime._register_scanner = object()
+        runtime._bluetooth_callback = lambda info: pytest.fail("duplicate delivery")
+        runtime._active_device_keys_by_source["02:00:00:00:00:01"] = {
+            ("02:00:00:00:00:01", "02:00:00:00:01:01")
+        }
+
         task = asyncio.create_task(
             runtime.async_gatt_read(
                 ap_mac="02:00:00:00:00:01",
@@ -1226,6 +1250,11 @@ def test_runtime_gatt_read_waits_for_characteristic_value():
             )
         )
         await asyncio.sleep(0)
+        await runtime._async_handle_event(_event())
+        assert len(deliveries) == 1
+        assert runtime.stats.bluetooth_forward_errors == int(raw_callback_fails)
+        assert runtime.active_devices_for_source("02:00:00:00:00:01") == ["02:00:00:00:01:01"]
+        assert not task.done()
         assert runtime.diagnostic_attributes()["active_pending_characteristic_reads"] == [
             {
                 "source": "02:00:00:00:00:01",
@@ -4804,3 +4833,66 @@ def test_runtime_failed_gatt_action_releases_slot_after_not_connected():
         assert runtime._device_connection_statuses[key] == "notConnected"
 
     asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("error_type", [TypeError, ValueError, RuntimeError])
+@pytest.mark.parametrize("callback", ["_async_on_raw_advertisement", "_async_on_advertisement"])
+def test_runtime_does_not_retry_after_scanner_processing_started(monkeypatch, caplog, error_type, callback):
+    from types import SimpleNamespace
+    from custom_components.aruba_ble_proxy.scanner import ArubaBleRemoteScanner
+
+    runtime = ArubaBleProxyRuntime(hass=None, host="0.0.0.0", port=7443, access_token="secret")
+    deliveries = []
+
+    def process(*args):
+        deliveries.append(args)
+        raise error_type("processing failed after delivery")
+
+    scanner = object.__new__(ArubaBleRemoteScanner)
+    scanner._scanner = SimpleNamespace(**{callback: process})
+
+    async def ensure(source):
+        return scanner
+
+    runtime._register_scanner = object()
+    runtime._bluetooth_callback = lambda info: pytest.fail("duplicate direct delivery")
+    monkeypatch.setattr(runtime, "_async_ensure_remote_scanner", ensure)
+    asyncio.run(runtime._async_handle_event(_event()))
+
+    assert len(deliveries) == 1
+    assert runtime.stats.events == 1
+    assert runtime.stats.bluetooth_forwards == 0
+    assert runtime.stats.bluetooth_forward_errors == 1
+    assert runtime.stats.last_bluetooth_error == f"{error_type.__name__}: processing failed after delivery"
+    assert "Failed to forward Aruba BLE advertisement through scanner" in caplog.text
+
+
+def test_runtime_direct_delivery_when_scanner_registration_is_unavailable(monkeypatch):
+    runtime = ArubaBleProxyRuntime(hass=None, host="0.0.0.0", port=7443, access_token="secret")
+    deliveries = []
+    runtime._bluetooth_callback = deliveries.append
+    monkeypatch.setattr(runtime_module, "_payload_to_ha_service_info", lambda payload: payload)
+    asyncio.run(runtime._async_handle_event(_event()))
+    assert len(deliveries) == 1
+    assert runtime.stats.bluetooth_forwards == 1
+    assert runtime.stats.bluetooth_forward_errors == 0
+
+
+def test_direct_service_info_preserves_absent_local_name(monkeypatch):
+    import sys
+    from dataclasses import replace
+    from types import ModuleType, SimpleNamespace
+    from custom_components.aruba_ble_proxy.ha_payload import event_to_bluetooth_payload
+
+    bluetooth = ModuleType("homeassistant.components.bluetooth")
+    bluetooth.BluetoothServiceInfoBleak = lambda **kwargs: SimpleNamespace(**kwargs)
+    components = ModuleType("homeassistant.components")
+    components.bluetooth = bluetooth
+    monkeypatch.setitem(sys.modules, "homeassistant", ModuleType("homeassistant"))
+    monkeypatch.setitem(sys.modules, "homeassistant.components", components)
+    payload = replace(event_to_bluetooth_payload(_event()), name=None)
+    info = runtime_module._payload_to_ha_service_info(payload)
+    assert info.name == payload.address
+    assert info.device.name is None
+    assert info.advertisement.local_name is None
+    assert info.raw == payload.raw

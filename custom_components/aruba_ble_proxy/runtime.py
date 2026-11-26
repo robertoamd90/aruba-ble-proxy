@@ -2049,17 +2049,28 @@ class ArubaBleProxyRuntime:
         self._notify_listeners()
 
     async def _async_forward_to_remote_scanner(self, payload: BluetoothPayload) -> bool:
+        """Return whether delivery was attempted, including processing failures."""
         if self._register_scanner is None:
             return False
 
         try:
             scanner = await self._async_ensure_remote_scanner(payload.source)
+        except Exception as err:
+            self.stats.bluetooth_forward_errors += 1
+            self.stats.last_bluetooth_error = f"{type(err).__name__}: {err}"
+            _LOGGER.exception("Failed to prepare Aruba BLE scanner")
+            return False
+
+        try:
             scanner.async_on_payload(payload)
         except Exception as err:
             self.stats.bluetooth_forward_errors += 1
             self.stats.last_bluetooth_error = f"{type(err).__name__}: {err}"
             _LOGGER.exception("Failed to forward Aruba BLE advertisement through scanner")
-            return False
+            # The callback may already have updated scanner state or notified
+            # consumers. Retrying through the direct callback could duplicate
+            # delivery and clear the error recorded above.
+            return True
         else:
             self.stats.bluetooth_forwards += 1
             self.stats.last_bluetooth_error = None
