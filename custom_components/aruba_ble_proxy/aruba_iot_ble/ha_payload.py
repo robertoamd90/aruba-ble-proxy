@@ -14,7 +14,7 @@ CONNECTABLE_FRAME_TYPES = {
 
 @dataclass(frozen=True)
 class BluetoothPayload:
-    name: str
+    name: str | None
     address: str
     rssi: int
     manufacturer_data: dict[int, bytes]
@@ -30,7 +30,7 @@ class BluetoothPayload:
 def event_to_bluetooth_payload(event: ArubaBleEvent) -> BluetoothPayload:
     advertisement = event.advertisement
     return BluetoothPayload(
-        name=advertisement.local_name or event.address,
+        name=advertisement.local_name,
         address=event.address.upper(),
         rssi=event.rssi,
         manufacturer_data=dict(advertisement.manufacturer_data),
