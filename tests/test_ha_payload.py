@@ -68,3 +68,18 @@ def test_event_to_bluetooth_payload_marks_non_connectable_frames():
     payload = event_to_bluetooth_payload(event)
 
     assert payload.connectable is False
+
+
+def test_event_without_local_name_keeps_name_absent():
+    event = ArubaBleEvent(
+        reporter=Reporter(name=None, mac="02:00:00:00:00:01", ipv4=None,
+                          ipv6=None, hardware_type=None, software_version=None,
+                          software_build=None, timestamp=None),
+        address="02:00:00:00:01:03", frame_type=BleFrameType.SCAN_RSP,
+        rssi=-61, address_type=MacAddrType.PUBLIC, apb_mac=None,
+        payload=b"\x04\xff\x4c\x00\x01", advertisement=BleAdvertisement(),
+    )
+    payload = event_to_bluetooth_payload(event)
+    assert payload.name is None
+    assert payload.raw == event.payload
+    assert payload.source == "02:00:00:00:00:01"

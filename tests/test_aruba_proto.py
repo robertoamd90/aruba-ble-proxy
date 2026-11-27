@@ -71,3 +71,19 @@ def test_decoder_rejects_invalid_access_token(monkeypatch):
 
     with pytest.raises(PermissionError):
         decoder.decode(b"fake")
+
+
+@pytest.mark.parametrize("include_data", [False, True])
+def test_decoder_skips_absent_or_empty_raw_data(monkeypatch, include_data):
+    from types import SimpleNamespace
+
+    frame = SimpleNamespace(mac=bytes.fromhex("112233445566"))
+    if include_data:
+        frame.data = b""
+
+    class Telemetry(FakeTelemetry):
+        bleData = [frame]
+
+    monkeypatch.setattr(aruba_proto, "_load_aruba_pb2",
+                        lambda: _ArubaPb2(telemetry_cls=Telemetry))
+    assert ArubaTelemetryDecoder(access_token="secret").decode(b"fake") == []
